@@ -1,0 +1,16 @@
+.git
+.gitlab
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+web/node_modules
+web/.svelte-kit
+web/build
+web/playwright-report
+web/test-results
