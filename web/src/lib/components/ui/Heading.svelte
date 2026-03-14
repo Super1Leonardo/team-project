@@ -9,7 +9,7 @@
 		...restProps
 	}: WithElementRef<HTMLAttributes<HTMLHeadingElement>> & {
 		children: Snippet;
-		className: string;
+		className?: string;
 	} = $props();
 </script>
 
