@@ -13,6 +13,6 @@
 	} = $props();
 </script>
 
-<h1 class={'mt-8 text-3xl font-semibold ' + className} {...restProps}>
+<h1 class={'my-4 text-3xl font-semibold ' + className} {...restProps}>
 	{@render children()}
 </h1>
