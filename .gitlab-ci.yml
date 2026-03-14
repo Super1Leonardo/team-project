@@ -51,6 +51,25 @@ test:
       fi
 
       chmod 600 "$key_file"
+      - echo "SSH_PRIVATE_KEY source type check"
+      - if [ -f "${SSH_PRIVATE_KEY:-}" ]; then echo "SSH_PRIVATE_KEY is a file path"; else echo "SSH_PRIVATE_KEY is inline text"; fi
+      - echo "key_file stats:"
+      - ls -l "$key_file"
+      - echo "line count:"
+      - wc -l "$key_file"
+      - echo "byte count:"
+      - wc -c "$key_file"
+      - echo "begin marker:"
+      - grep -n "^-----BEGIN .* PRIVATE KEY-----$" "$key_file" || true
+      - echo "end marker:"
+      - grep -n "^-----END .* PRIVATE KEY-----$" "$key_file" || true
+      - echo "first line:"
+      - head -n 1 "$key_file"
+      - echo "last line:"
+      - tail -n 1 "$key_file"
+      - echo "ssh-keygen test:"
+      - ssh-keygen -y -f "$key_file" >/dev/null && echo OK || echo FAIL
+
       if ! ssh-keygen -y -f "$key_file" >/dev/null 2>&1; then
         echo "SSH_PRIVATE_KEY is invalid or passphrase-protected. Use an unencrypted deploy key in OpenSSH/PEM format." >&2
         exit 1
