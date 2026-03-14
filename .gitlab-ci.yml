@@ -24,54 +24,23 @@ test:
     - apk add --no-cache openssh-client rsync
     - eval "$(ssh-agent -s)"
     - mkdir -p ~/.ssh
-    - chmod 600 ~/.ssh
+    - chmod 700 ~/.ssh
     - |
+      set -eu
+
       if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
         echo "SSH_PRIVATE_KEY is not set." >&2
         exit 1
       fi
+
       key_file="$HOME/.ssh/gitlab_deploy_key"
-      raw_key_file="$HOME/.ssh/gitlab_deploy_key.raw"
-      if [ -f "${SSH_PRIVATE_KEY:-}" ]; then
-        tr -d '\r' < "$SSH_PRIVATE_KEY" > "$raw_key_file"
-      else
-        printf '%s' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$raw_key_file"
-      fi
 
-      if grep -q "BEGIN .* PRIVATE KEY" "$raw_key_file"; then
-        cp "$raw_key_file" "$key_file"
-      elif printf '%b' "$(cat "$raw_key_file")" | grep -q "BEGIN .* PRIVATE KEY"; then
-        printf '%b' "$(cat "$raw_key_file")" > "$key_file"
-      elif base64 -d "$raw_key_file" > "$key_file" 2>/dev/null && grep -q "BEGIN .* PRIVATE KEY" "$key_file"; then
-        :
-      else
-        echo "SSH_PRIVATE_KEY is not in a supported format." >&2
-        echo "Use one of these formats: GitLab File variable, plain private key text, or base64-encoded private key." >&2
-        exit 1
-      fi
-
+      cp "$SSH_PRIVATE_KEY" "$key_file"
+      tr -d '\r' < "$key_file" > "$key_file.tmp"
+      mv "$key_file.tmp" "$key_file"
       chmod 600 "$key_file"
-      echo "key_file stats:"
-      ls -l "$key_file"
-      echo "line count:"
-      wc -l "$key_file"
-      echo "byte count:"
-      wc -c "$key_file"
-      echo "begin marker:"
-      grep -n "^-----BEGIN .* PRIVATE KEY-----$" "$key_file" || true
-      echo "end marker:"
-      grep -n "^-----END .* PRIVATE KEY-----$" "$key_file" || true
-      echo "first line:"
-      head -n 1 "$key_file"
-      echo "last line:"
-      tail -n 1 "$key_file"
-      echo "derived public key:"
-      ssh-keygen -y -f "$key_file" || true
 
-      if ! ssh-keygen -y -f "$key_file" >/dev/null 2>&1; then
-        echo "SSH_PRIVATE_KEY is invalid or passphrase-protected. Use an unencrypted deploy key in OpenSSH/PEM format." >&2
-        exit 1
-      fi
+      ssh-keygen -y -f "$key_file" >/dev/null
       ssh-add "$key_file"
     - |
       if [ -f "${SSH_KNOWN_HOSTS:-}" ]; then
