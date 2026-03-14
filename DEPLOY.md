@@ -61,6 +61,10 @@ ssh-keygen -t ed25519 -C "gitlab-deploy"
 ~/.ssh/authorized_keys
 ```
 
+Р›СѓС‡С€Рµ С…СЂР°РЅРёС‚СЊ `SSH_PRIVATE_KEY` РєР°Рє GitLab `File` variable.
+Р•СЃР»Рё РёСЃРїРѕР»СЊР·СѓРµС‚Рµ РѕР±С‹С‡РЅСѓСЋ text variable, РІСЃС‚Р°РІР»СЏР№С‚Рµ РїРѕР»РЅС‹Р№ РєР»СЋС‡ С†РµР»РёРєРѕРј СЃРѕ СЃС‚СЂРѕРєР°РјРё `BEGIN/END PRIVATE KEY`.
+РљР»СЋС‡ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ Р±РµР· passphrase, РёРЅР°С‡Рµ CI РЅРµ СЃРјРѕР¶РµС‚ РґРѕР±Р°РІРёС‚СЊ РµРіРѕ РІ `ssh-agent`.
+
 ### SSH_KNOWN_HOSTS
 
 Сгенерировать можно так:
