@@ -1,0 +1,1077 @@
+from __future__ import annotations
+
+import time
+from datetime import UTC, datetime
+from datetime import timedelta
+from typing import Any, Callable
+
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+
+from backend.app.common.schemas import ParsedMessage
+from backend.app.core.config import Settings
+from backend.app.core.exceptions import DomainValidationError, ResourceNotFoundError
+
+SUPPORTED_SOURCE_TYPES = ("telegram", "vk", "dzen", "rss")
+
+
+class BrandRadarPostgresStore:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    def init_db(self, retries: int = 10, delay_seconds: float = 1.0) -> None:
+        last_error: Exception | None = None
+
+        for attempt in range(retries):
+            try:
+                with self._connect() as conn, conn.cursor() as cur:
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS projects (
+                            id SERIAL PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            keywords TEXT[] NOT NULL,
+                            exclude_keywords TEXT[] NOT NULL DEFAULT '{}',
+                            risk_words TEXT[] NOT NULL DEFAULT '{}',
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS sources (
+                            id SERIAL PRIMARY KEY,
+                            project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            source_type TEXT NOT NULL,
+                            source_config JSONB NOT NULL,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            poll_interval_s INT NOT NULL DEFAULT 300,
+                            last_collected_at TIMESTAMPTZ,
+                            last_error TEXT,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss')),
+                            CHECK (poll_interval_s > 0)
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS raw_posts (
+                            id BIGSERIAL PRIMARY KEY,
+                            source_id INT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+                            external_id TEXT NOT NULL,
+                            url TEXT,
+                            title TEXT,
+                            text TEXT NOT NULL,
+                            author TEXT,
+                            published_at TIMESTAMPTZ NOT NULL,
+                            collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            raw_meta JSONB NOT NULL DEFAULT '{}',
+                            ml_processed BOOLEAN NOT NULL DEFAULT FALSE,
+                            UNIQUE (source_id, external_id)
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS dedup_groups (
+                            id BIGSERIAL PRIMARY KEY,
+                            project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            representative_mention_id BIGINT,
+                            mention_count INT NOT NULL DEFAULT 1,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS mentions (
+                            id BIGSERIAL PRIMARY KEY,
+                            raw_post_id BIGINT NOT NULL UNIQUE REFERENCES raw_posts(id) ON DELETE CASCADE,
+                            project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            relevance_score DOUBLE PRECISION NOT NULL,
+                            relevance_label TEXT NOT NULL,
+                            sentiment_score DOUBLE PRECISION NOT NULL,
+                            sentiment_label TEXT NOT NULL,
+                            has_risk_words BOOLEAN NOT NULL DEFAULT FALSE,
+                            embedding VECTOR(384) NOT NULL,
+                            dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
+                            is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+                            processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS events (
+                            id BIGSERIAL PRIMARY KEY,
+                            project_id INT,
+                            event_type TEXT NOT NULL,
+                            payload JSONB NOT NULL DEFAULT '{}',
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_raw_posts_unprocessed
+                        ON raw_posts (ml_processed)
+                        WHERE NOT ml_processed
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_raw_posts_source_published
+                        ON raw_posts (source_id, published_at DESC)
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_mentions_embedding
+                        ON mentions
+                        USING ivfflat (embedding vector_cosine_ops)
+                        WITH (lists = 100)
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_mentions_feed
+                        ON mentions (project_id, processed_at DESC)
+                        WHERE relevance_label = 'relevant' AND is_primary = TRUE
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_events_lookup
+                        ON events (project_id, created_at DESC)
+                        """
+                    )
+                return
+            except psycopg.OperationalError as exc:
+                last_error = exc
+                if attempt == retries - 1:
+                    break
+                time.sleep(delay_seconds)
+
+        if last_error is not None:
+            raise last_error
+
+    def ping(self) -> None:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+
+    def create_project(
+        self,
+        name: str,
+        keywords: list[str],
+        exclude_keywords: list[str] | None = None,
+        risk_words: list[str] | None = None,
+    ) -> dict[str, Any]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO projects (
+                    name,
+                    keywords,
+                    exclude_keywords,
+                    risk_words
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, name, keywords, exclude_keywords, risk_words, created_at
+                """,
+                (
+                    name,
+                    keywords,
+                    exclude_keywords or [],
+                    risk_words or [],
+                ),
+            )
+            row = cur.fetchone()
+
+        return dict(row)
+
+    def list_projects(self) -> list[dict[str, Any]]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.keywords,
+                    p.exclude_keywords,
+                    p.risk_words,
+                    p.created_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM sources s
+                        WHERE s.project_id = p.id
+                    ) AS sources_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM mentions m
+                        WHERE m.project_id = p.id
+                    ) AS mentions_count
+                FROM projects p
+                ORDER BY p.created_at DESC, p.id DESC
+                """
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def get_project(self, project_id: int) -> dict[str, Any]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.keywords,
+                    p.exclude_keywords,
+                    p.risk_words,
+                    p.created_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM sources s
+                        WHERE s.project_id = p.id
+                    ) AS sources_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM mentions m
+                        WHERE m.project_id = p.id
+                    ) AS mentions_count
+                FROM projects p
+                WHERE p.id = %s
+                """,
+                (project_id,),
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            raise ResourceNotFoundError(f"Project {project_id} was not found.")
+        return dict(row)
+
+    def update_project(
+        self,
+        project_id: int,
+        *,
+        name: str | None = None,
+        keywords: list[str] | None = None,
+        exclude_keywords: list[str] | None = None,
+        risk_words: list[str] | None = None,
+    ) -> dict[str, Any]:
+        project = self.get_project(project_id)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE projects
+                SET
+                    name = %s,
+                    keywords = %s,
+                    exclude_keywords = %s,
+                    risk_words = %s
+                WHERE id = %s
+                """,
+                (
+                    name if name is not None else project["name"],
+                    keywords if keywords is not None else project["keywords"],
+                    (
+                        exclude_keywords
+                        if exclude_keywords is not None
+                        else project["exclude_keywords"]
+                    ),
+                    risk_words if risk_words is not None else project["risk_words"],
+                    project_id,
+                ),
+            )
+
+        return self.get_project(project_id)
+
+    def delete_project(self, project_id: int) -> None:
+        self.get_project(project_id)
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+
+    def create_source(
+        self,
+        project_id: int,
+        source_type: str,
+        source_config: dict[str, Any],
+        is_active: bool = True,
+        poll_interval_s: int = 300,
+    ) -> dict[str, Any]:
+        if source_type not in SUPPORTED_SOURCE_TYPES:
+            raise DomainValidationError(
+                f"Unsupported source_type '{source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
+            )
+
+        self._ensure_project_exists(project_id)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO sources (
+                    project_id,
+                    source_type,
+                    source_config,
+                    is_active,
+                    poll_interval_s
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING
+                    id,
+                    project_id,
+                    source_type,
+                    source_config,
+                    is_active,
+                    poll_interval_s,
+                    last_collected_at,
+                    last_error,
+                    created_at
+                """,
+                (
+                    project_id,
+                    source_type,
+                    Jsonb(source_config),
+                    is_active,
+                    poll_interval_s,
+                ),
+            )
+            row = cur.fetchone()
+
+        return dict(row)
+
+    def list_sources(
+        self,
+        project_id: int | None = None,
+        *,
+        active_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if project_id is not None:
+            conditions.append("s.project_id = %s")
+            params.append(project_id)
+
+        if active_only:
+            conditions.append("s.is_active = TRUE")
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    s.id,
+                    s.project_id,
+                    s.source_type,
+                    s.source_config,
+                    s.is_active,
+                    s.poll_interval_s,
+                    s.last_collected_at,
+                    s.last_error,
+                    s.created_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM raw_posts rp
+                        WHERE rp.source_id = s.id
+                    ) AS raw_posts_count
+                FROM sources s
+                {where_clause}
+                ORDER BY s.project_id, s.id
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def get_source(self, project_id: int, source_id: int) -> dict[str, Any]:
+        self._ensure_project_exists(project_id)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.id,
+                    s.project_id,
+                    s.source_type,
+                    s.source_config,
+                    s.is_active,
+                    s.poll_interval_s,
+                    s.last_collected_at,
+                    s.last_error,
+                    s.created_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM raw_posts rp
+                        WHERE rp.source_id = s.id
+                    ) AS raw_posts_count
+                FROM sources s
+                WHERE s.project_id = %s
+                  AND s.id = %s
+                """,
+                (project_id, source_id),
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            raise ResourceNotFoundError(
+                f"Source {source_id} was not found in project {project_id}."
+            )
+        return dict(row)
+
+    def update_source(
+        self,
+        project_id: int,
+        source_id: int,
+        *,
+        source_type: str | None = None,
+        source_config: dict[str, Any] | None = None,
+        is_active: bool | None = None,
+        poll_interval_s: int | None = None,
+    ) -> dict[str, Any]:
+        source = self.get_source(project_id, source_id)
+        next_source_type = source_type if source_type is not None else source["source_type"]
+        if next_source_type not in SUPPORTED_SOURCE_TYPES:
+            raise DomainValidationError(
+                f"Unsupported source_type '{next_source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
+            )
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE sources
+                SET
+                    source_type = %s,
+                    source_config = %s,
+                    is_active = %s,
+                    poll_interval_s = %s
+                WHERE id = %s
+                  AND project_id = %s
+                """,
+                (
+                    next_source_type,
+                    Jsonb(source_config if source_config is not None else source["source_config"]),
+                    is_active if is_active is not None else source["is_active"],
+                    poll_interval_s
+                    if poll_interval_s is not None
+                    else source["poll_interval_s"],
+                    source_id,
+                    project_id,
+                ),
+            )
+
+        return self.get_source(project_id, source_id)
+
+    def delete_source(self, project_id: int, source_id: int) -> None:
+        self.get_source(project_id, source_id)
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM sources WHERE id = %s AND project_id = %s",
+                (source_id, project_id),
+            )
+
+    def list_due_sources(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        current_time = now or datetime.now(UTC)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.id,
+                    s.project_id,
+                    s.source_type,
+                    s.source_config,
+                    s.is_active,
+                    s.poll_interval_s,
+                    s.last_collected_at,
+                    s.last_error,
+                    s.created_at,
+                    p.name AS project_name,
+                    p.keywords,
+                    p.exclude_keywords,
+                    p.risk_words
+                FROM sources s
+                JOIN projects p ON p.id = s.project_id
+                WHERE s.is_active = TRUE
+                  AND (
+                      s.last_collected_at IS NULL
+                      OR s.last_collected_at <= %s - make_interval(secs => s.poll_interval_s)
+                  )
+                ORDER BY s.last_collected_at NULLS FIRST, s.id
+                """,
+                (current_time,),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def list_active_telegram_channels(self) -> list[str]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT source_config->>'channel' AS channel
+                FROM sources
+                WHERE is_active = TRUE
+                  AND source_type = 'telegram'
+                  AND source_config ? 'channel'
+                ORDER BY channel
+                """
+            )
+            rows = cur.fetchall()
+
+        return [row["channel"] for row in rows if row["channel"]]
+
+    def save_raw_posts(self, source: dict[str, Any], posts: list[ParsedMessage]) -> int:
+        saved_count = 0
+        collected_at = datetime.now(UTC)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            for post in posts:
+                cur.execute(
+                    """
+                    INSERT INTO raw_posts (
+                        source_id,
+                        external_id,
+                        url,
+                        title,
+                        text,
+                        author,
+                        published_at,
+                        collected_at,
+                        raw_meta
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_id, external_id) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        source["id"],
+                        str(post.id),
+                        post.url,
+                        None,
+                        post.text or "",
+                        post.post_author or post.source.username or post.source.title,
+                        post.date,
+                        collected_at,
+                        Jsonb(
+                            {
+                                "message_uid": post.message_uid,
+                                "channel_id": post.source.channel_id,
+                                "channel_title": post.source.title,
+                                "channel_username": post.source.username,
+                                "requested_as": post.source.requested_as,
+                                "views": post.views,
+                                "forwards": post.forwards,
+                                "like_count": post.like_count,
+                                "dislike_count": post.dislike_count,
+                                "reactions": [
+                                    reaction.model_dump() for reaction in post.reactions
+                                ],
+                            }
+                        ),
+                    ),
+                )
+                inserted = cur.fetchone()
+                if inserted is not None:
+                    saved_count += 1
+
+            cur.execute(
+                """
+                UPDATE sources
+                SET last_collected_at = NOW(),
+                    last_error = NULL
+                WHERE id = %s
+                """,
+                (source["id"],),
+            )
+            self._insert_event(
+                cur,
+                project_id=source["project_id"],
+                event_type="collector_run",
+                payload={"source_id": source["id"], "new_posts_count": saved_count},
+            )
+
+        return saved_count
+
+    def record_collection_error(self, source: dict[str, Any], error: str) -> None:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE sources
+                SET last_error = %s
+                WHERE id = %s
+                """,
+                (error, source["id"]),
+            )
+            self._insert_event(
+                cur,
+                project_id=source["project_id"],
+                event_type="collector_error",
+                payload={
+                    "source_id": source["id"],
+                    "source_type": source["source_type"],
+                    "error": error,
+                },
+            )
+
+    def fetch_unprocessed_raw_posts(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    rp.id,
+                    rp.source_id,
+                    rp.external_id,
+                    rp.url,
+                    rp.title,
+                    rp.text,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at,
+                    rp.raw_meta,
+                    s.project_id,
+                    s.source_type,
+                    p.keywords,
+                    p.exclude_keywords,
+                    p.risk_words
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                JOIN projects p ON p.id = s.project_id
+                WHERE rp.ml_processed = FALSE
+                ORDER BY rp.collected_at ASC, rp.id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def find_similar_mentions(
+        self,
+        project_id: int,
+        embedding: list[float],
+        *,
+        lookback_days: int = 3,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        embedding_literal = self._vector_literal(embedding)
+        cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.dedup_group_id,
+                    m.is_primary,
+                    m.processed_at,
+                    (m.embedding <=> CAST(%s AS vector)) AS distance
+                FROM mentions m
+                WHERE m.project_id = %s
+                  AND m.processed_at >= %s
+                ORDER BY m.embedding <=> CAST(%s AS vector)
+                LIMIT %s
+                """,
+                (
+                    embedding_literal,
+                    project_id,
+                    cutoff,
+                    embedding_literal,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def ensure_dedup_group_for_mention(self, project_id: int, mention_id: int) -> int:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT dedup_group_id
+                FROM mentions
+                WHERE id = %s AND project_id = %s
+                """,
+                (mention_id, project_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ResourceNotFoundError(f"Mention {mention_id} was not found.")
+
+            existing_group_id = row["dedup_group_id"]
+            if existing_group_id is not None:
+                return int(existing_group_id)
+
+            cur.execute(
+                """
+                INSERT INTO dedup_groups (
+                    project_id,
+                    representative_mention_id,
+                    mention_count
+                )
+                VALUES (%s, %s, 1)
+                RETURNING id
+                """,
+                (project_id, mention_id),
+            )
+            group_row = cur.fetchone()
+            group_id = int(group_row["id"])
+
+            cur.execute(
+                """
+                UPDATE mentions
+                SET dedup_group_id = %s,
+                    is_primary = TRUE
+                WHERE id = %s
+                """,
+                (group_id, mention_id),
+            )
+
+        return group_id
+
+    def persist_mentions(
+        self,
+        mention_rows: list[dict[str, Any]],
+        sync_callback: Callable[[list[dict[str, Any]]], None],
+    ) -> dict[str, Any]:
+        if not mention_rows:
+            return {
+                "stored_count": 0,
+                "synced_count": 0,
+                "projects": {},
+            }
+
+        raw_post_ids = [int(item["raw_post_id"]) for item in mention_rows]
+        project_stats: dict[int, dict[str, int]] = {}
+
+        with self._connect(autocommit=False) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    rp.id,
+                    rp.source_id,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at,
+                    rp.ml_processed,
+                    s.project_id,
+                    s.source_type
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                WHERE rp.id = ANY(%s)
+                """,
+                (raw_post_ids,),
+            )
+            raw_posts = {int(row["id"]): dict(row) for row in cur.fetchall()}
+
+            missing_ids = sorted(set(raw_post_ids) - set(raw_posts))
+            if missing_ids:
+                raise ResourceNotFoundError(
+                    f"raw_posts not found: {', '.join(str(item) for item in missing_ids)}"
+                )
+
+            already_processed = [
+                str(raw_post_id)
+                for raw_post_id, row in raw_posts.items()
+                if row["ml_processed"]
+            ]
+            if already_processed:
+                raise DomainValidationError(
+                    "raw_posts already processed: " + ", ".join(already_processed)
+                )
+
+            sync_rows: list[dict[str, Any]] = []
+            touched_groups: set[int] = set()
+
+            for item in mention_rows:
+                processed_at = item.get("processed_at") or datetime.now(UTC)
+                embedding_literal = self._vector_literal(item["embedding"])
+                raw_post = raw_posts[int(item["raw_post_id"])]
+                project_id = int(item.get("project_id", raw_post["project_id"]))
+
+                cur.execute(
+                    """
+                    INSERT INTO mentions (
+                        raw_post_id,
+                        project_id,
+                        relevance_score,
+                        relevance_label,
+                        sentiment_score,
+                        sentiment_label,
+                        has_risk_words,
+                        embedding,
+                        dedup_group_id,
+                        is_primary,
+                        processed_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        CAST(%s AS vector),
+                        %s, %s, %s
+                    )
+                    ON CONFLICT (raw_post_id) DO UPDATE SET
+                        project_id = EXCLUDED.project_id,
+                        relevance_score = EXCLUDED.relevance_score,
+                        relevance_label = EXCLUDED.relevance_label,
+                        sentiment_score = EXCLUDED.sentiment_score,
+                        sentiment_label = EXCLUDED.sentiment_label,
+                        has_risk_words = EXCLUDED.has_risk_words,
+                        embedding = EXCLUDED.embedding,
+                        dedup_group_id = EXCLUDED.dedup_group_id,
+                        is_primary = EXCLUDED.is_primary,
+                        processed_at = EXCLUDED.processed_at
+                    RETURNING
+                        id,
+                        raw_post_id,
+                        project_id,
+                        relevance_score,
+                        relevance_label,
+                        sentiment_score,
+                        sentiment_label,
+                        has_risk_words,
+                        dedup_group_id,
+                        is_primary,
+                        processed_at
+                    """,
+                    (
+                        item["raw_post_id"],
+                        project_id,
+                        item["relevance_score"],
+                        item["relevance_label"],
+                        item["sentiment_score"],
+                        item["sentiment_label"],
+                        item["has_risk_words"],
+                        embedding_literal,
+                        item.get("dedup_group_id"),
+                        item["is_primary"],
+                        processed_at,
+                    ),
+                )
+                mention = dict(cur.fetchone())
+
+                group_id = mention["dedup_group_id"]
+                if group_id is not None:
+                    touched_groups.add(int(group_id))
+
+                project_id = int(mention["project_id"])
+                stats = project_stats.setdefault(
+                    project_id,
+                    {
+                        "batch_size": 0,
+                        "relevant_count": 0,
+                        "irrelevant_count": 0,
+                        "dedup_count": 0,
+                    },
+                )
+                stats["batch_size"] += 1
+                if mention["relevance_label"] == "relevant":
+                    stats["relevant_count"] += 1
+                else:
+                    stats["irrelevant_count"] += 1
+                if group_id is not None or not mention["is_primary"]:
+                    stats["dedup_count"] += 1
+
+                sync_rows.append(
+                    {
+                        "mention_id": int(mention["id"]),
+                        "project_id": project_id,
+                        "source_type": raw_post["source_type"],
+                        "source_id": int(raw_post["source_id"]),
+                        "author": raw_post["author"] or "",
+                        "relevance_score": float(mention["relevance_score"]),
+                        "relevance_label": mention["relevance_label"],
+                        "sentiment_score": float(mention["sentiment_score"]),
+                        "sentiment_label": mention["sentiment_label"],
+                        "has_risk_words": int(bool(mention["has_risk_words"])),
+                        "is_primary": int(bool(mention["is_primary"])),
+                        "published_at": raw_post["published_at"],
+                        "collected_at": raw_post["collected_at"],
+                        "processed_at": mention["processed_at"],
+                        "dedup_group_id": int(group_id or 0),
+                    }
+                )
+
+            for group_id in touched_groups:
+                cur.execute(
+                    """
+                    UPDATE dedup_groups
+                    SET
+                        mention_count = (
+                            SELECT COUNT(*)
+                            FROM mentions
+                            WHERE dedup_group_id = %s
+                        ),
+                        representative_mention_id = COALESCE(
+                            (
+                                SELECT id
+                                FROM mentions
+                                WHERE dedup_group_id = %s
+                                  AND is_primary = TRUE
+                                ORDER BY processed_at ASC, id ASC
+                                LIMIT 1
+                            ),
+                            (
+                                SELECT id
+                                FROM mentions
+                                WHERE dedup_group_id = %s
+                                ORDER BY processed_at ASC, id ASC
+                                LIMIT 1
+                            )
+                        )
+                    WHERE id = %s
+                    """,
+                    (group_id, group_id, group_id, group_id),
+                )
+
+            sync_callback(sync_rows)
+
+            cur.execute(
+                """
+                UPDATE raw_posts
+                SET ml_processed = TRUE
+                WHERE id = ANY(%s)
+                """,
+                (raw_post_ids,),
+            )
+
+            for project_id, stats in project_stats.items():
+                self._insert_event(
+                    cur,
+                    project_id=project_id,
+                    event_type="ml_processed",
+                    payload=stats,
+                )
+
+            conn.commit()
+
+        return {
+            "stored_count": len(mention_rows),
+            "synced_count": len(sync_rows),
+            "projects": project_stats,
+        }
+
+    def list_raw_posts(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    rp.id,
+                    rp.source_id,
+                    s.source_type,
+                    rp.external_id,
+                    rp.url,
+                    rp.title,
+                    rp.text,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at,
+                    rp.raw_meta,
+                    rp.ml_processed
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                WHERE s.project_id = %s
+                ORDER BY rp.published_at DESC, rp.id DESC
+                LIMIT %s
+                """,
+                (project_id, limit),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def list_mentions(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.raw_post_id,
+                    m.project_id,
+                    m.relevance_score,
+                    m.relevance_label,
+                    m.sentiment_score,
+                    m.sentiment_label,
+                    m.has_risk_words,
+                    m.dedup_group_id,
+                    m.is_primary,
+                    m.processed_at,
+                    rp.source_id,
+                    s.source_type,
+                    rp.external_id,
+                    rp.url,
+                    rp.title,
+                    rp.text,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                JOIN sources s ON s.id = rp.source_id
+                WHERE m.project_id = %s
+                ORDER BY m.processed_at DESC, m.id DESC
+                LIMIT %s
+                """,
+                (project_id, limit),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def count_unprocessed_raw_posts(self) -> int:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM raw_posts WHERE ml_processed = FALSE")
+            row = cur.fetchone()
+
+        return int(row["total"])
+
+    def _insert_event(
+        self,
+        cur: psycopg.Cursor,
+        *,
+        project_id: int | None,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        cur.execute(
+            """
+            INSERT INTO events (
+                project_id,
+                event_type,
+                payload
+            )
+            VALUES (%s, %s, %s)
+            """,
+            (
+                project_id,
+                event_type,
+                Jsonb(payload),
+            ),
+        )
+
+    @staticmethod
+    def _vector_literal(embedding: list[float]) -> str:
+        return "[" + ",".join(f"{value:.10f}" for value in embedding) + "]"
+
+    def _ensure_project_exists(self, project_id: int) -> None:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM projects WHERE id = %s", (project_id,))
+            row = cur.fetchone()
+
+        if row is None:
+            raise ResourceNotFoundError(f"Project {project_id} was not found.")
+
+    def _connect(self, *, autocommit: bool = True):
+        return psycopg.connect(
+            self.settings.parser_database_url,
+            autocommit=autocommit,
+            row_factory=dict_row,
+        )

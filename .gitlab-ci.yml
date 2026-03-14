@@ -2,11 +2,64 @@
 # NOTE: You should not delete this file!
 
 stages:
-  - build
   - test
   - deploy
+
+default:
+  interruptible: true
+
+variables:
+  GIT_STRATEGY: fetch
+  REMOTE_APP_UP_CMD: docker compose --profile python up -d --build --remove-orphans
 
 test:
   stage: test
   script:
-    - echo 'ok'
+    - echo "ok"
+
+.deploy_template:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache openssh-client rsync
+    - eval "$(ssh-agent -s)"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - |
+      if [ -f "${SSH_PRIVATE_KEY:-}" ]; then
+        tr -d '\r' < "$SSH_PRIVATE_KEY" | ssh-add -
+      else
+        printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+      fi
+    - |
+      if [ -f "${SSH_KNOWN_HOSTS:-}" ]; then
+        cp "$SSH_KNOWN_HOSTS" ~/.ssh/known_hosts
+      else
+        printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      fi
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - sh scripts/deploy_remote.sh
+
+deploy_branch:
+  extends: .deploy_template
+  variables:
+    DEPLOY_TARGET_DIR: "${DEPLOY_BASE_PATH}/${CI_COMMIT_REF_SLUG}"
+  environment:
+    name: review/${CI_COMMIT_REF_SLUG}
+  rules:
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+
+deploy_production:
+  extends: .deploy_template
+  variables:
+    DEPLOY_TARGET_DIR: "${DEPLOY_BASE_PATH}/production"
+    REMOTE_APP_UP_CMD: docker compose --profile python --profile prod up -d --build --remove-orphans
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never

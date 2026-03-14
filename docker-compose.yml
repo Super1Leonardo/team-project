@@ -10,7 +10,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
-      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
+      PUBLIC_BRANDRADAR_API_BASE_URL: ${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
 
   web-prod:
     profiles: ["prod"]
@@ -24,7 +24,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
-      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
+      PUBLIC_BRANDRADAR_API_BASE_URL: ${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
 
   e2e:
     profiles: ["e2e"]
@@ -43,6 +43,11 @@ services:
 
   python:
     profiles: ["python"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     build:
       context: .
       dockerfile: Dockerfile.python
@@ -53,15 +58,65 @@ services:
       TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
       TELEGRAM_PHONE: ${TELEGRAM_PHONE:-}
-      TELEGRAM_SESSION_PATH: /app/backend/data/telegram_parser
+      TELEGRAM_SESSION_PATH: /app/backend/app/data/telegram_parser
+      PARSER_DB_HOST: postgres
+      PARSER_DB_PORT: 5432
+      PARSER_DB_NAME: ${POSTGRES_DB:-brandradar}
+      PARSER_DB_USER: ${POSTGRES_USER:-brandradar}
+      PARSER_DB_PASSWORD: ${POSTGRES_PASSWORD:-brandradar}
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-brandradar_ml}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-brandradar}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-brandradar}
+      EXTERNAL_ML_BASE_URL: ${EXTERNAL_ML_BASE_URL:-http://178.154.216.255}
+      EXTERNAL_ML_PREDICT_PATH: ${EXTERNAL_ML_PREDICT_PATH:-/predict}
+      EXTERNAL_ML_TIMEOUT_SECONDS: ${EXTERNAL_ML_TIMEOUT_SECONDS:-60}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
     volumes:
       - .:/app
       - pip_cache:/root/.cache/pip
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+
+  postgres:
+    profiles: ["python"]
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-brandradar}
+      POSTGRES_USER: ${POSTGRES_USER:-brandradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brandradar}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brandradar} -d ${POSTGRES_DB:-brandradar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    profiles: ["python"]
+    image: clickhouse/clickhouse-server:25.8
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-brandradar_ml}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-brandradar}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-brandradar}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER:-brandradar} --password ${CLICKHOUSE_PASSWORD:-brandradar} --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   web_node_modules:
   bun_cache:
   pip_cache:
+  postgres_data:
+  clickhouse_data:

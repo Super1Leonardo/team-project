@@ -19,9 +19,7 @@ from telethon.errors import (
 )
 from telethon.tl.types import ReactionCustomEmoji, ReactionEmoji
 
-from backend.channels import TARGET_CHANNELS
-from backend.config import Settings
-from backend.models import (
+from backend.app.common.schemas import (
     AuthStatusResponse,
     ChannelParseResult,
     MessageSource,
@@ -30,6 +28,8 @@ from backend.models import (
     ReactionInfo,
     UserInfo,
 )
+from backend.app.core.config import Settings
+from backend.app.modules.sources.constants import TARGET_CHANNELS
 
 
 class TelegramServiceError(Exception):
@@ -71,7 +71,7 @@ class PendingQrLogin:
     user: UserInfo | None = None
 
 
-class TelegramService:
+class TelegramGateway:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._pending_codes: dict[str, PendingCode] = {}
@@ -101,14 +101,18 @@ class TelegramService:
         finally:
             await client.disconnect()
 
-    async def get_auth_status(self) -> AuthStatusResponse:
+    async def get_auth_status(
+        self,
+        selected_channels: list[str] | None = None,
+    ) -> AuthStatusResponse:
+        channels = selected_channels or TARGET_CHANNELS
         if not self.settings.credentials_configured:
             return AuthStatusResponse(
                 configured=False,
                 authorized=False,
                 phone_hint=self.settings.telegram_phone,
                 user=None,
-                selected_channels=TARGET_CHANNELS,
+                selected_channels=channels,
             )
 
         pending = self._pending_qr
@@ -118,7 +122,7 @@ class TelegramService:
                 authorized=False,
                 phone_hint=self.settings.telegram_phone,
                 user=None,
-                selected_channels=TARGET_CHANNELS,
+                selected_channels=channels,
             )
 
         if pending and pending.status == "authorized" and pending.user:
@@ -127,7 +131,7 @@ class TelegramService:
                 authorized=True,
                 phone_hint=self.settings.telegram_phone,
                 user=pending.user,
-                selected_channels=TARGET_CHANNELS,
+                selected_channels=channels,
             )
 
         async with self._client() as client:
@@ -142,7 +146,7 @@ class TelegramService:
                 authorized=authorized,
                 phone_hint=self.settings.telegram_phone,
                 user=user,
-                selected_channels=TARGET_CHANNELS,
+                selected_channels=channels,
             )
 
     async def start_qr_login(self, recreate: bool = False) -> dict:
@@ -401,6 +405,9 @@ class TelegramService:
         message_url = f"https://t.me/{username}/{message.id}" if username else None
 
         return ParsedMessage(
+            message_uid=self._build_message_uid(entity.id, message.id),
+            project_id="default",
+            source_type="telegram",
             id=message.id,
             text=message.message or "",
             date=message.date,
@@ -494,13 +501,14 @@ class TelegramService:
 
     def _serialize_qr_state(self, pending: PendingQrLogin) -> dict:
         qr_url = pending.qr_login.url if pending.status == "pending" else None
+        qr_image_data_url = self._build_qr_image_data_url(qr_url) if qr_url else None
         return {
             "authorized": pending.status == "authorized",
             "status": pending.status,
             "message": self._qr_status_message(pending.status),
             "user": pending.user.model_dump() if pending.user else None,
             "qr_url": qr_url,
-            "qr_image_data_url": self._build_qr_image_data_url(qr_url) if qr_url else None,
+            "qr_image_data_url": qr_image_data_url,
             "expires_at": pending.expires_at.isoformat(),
             "error": pending.error,
             "next_step": self._qr_next_step(pending.status),
@@ -531,14 +539,6 @@ class TelegramService:
         return steps.get(status, "Generate a QR code to start login.")
 
     @staticmethod
-    def _build_qr_image_data_url(url: str) -> str:
-        buffer = BytesIO()
-        image = qrcode.make(url, image_factory=SvgPathImage, box_size=10, border=2)
-        image.save(buffer)
-        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-        return f"data:image/svg+xml;base64,{encoded}"
-
-    @staticmethod
     def _serialize_sent_code(sent_code) -> dict:
         sent_type = getattr(sent_code, "type", None)
         next_type = getattr(sent_code, "next_type", None)
@@ -547,6 +547,18 @@ class TelegramService:
             "next_delivery_type": next_type.__class__.__name__ if next_type else None,
             "timeout": getattr(sent_code, "timeout", None),
         }
+
+    @staticmethod
+    def _build_qr_image_data_url(qr_url: str) -> str:
+        buffer = BytesIO()
+        image = qrcode.make(qr_url, image_factory=SvgPathImage)
+        image.save(buffer)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+
+    @staticmethod
+    def _build_message_uid(channel_id: int, message_id: int) -> str:
+        return f"telegram:{channel_id}:{message_id}"
 
     @staticmethod
     def _user_to_model(user) -> UserInfo:
