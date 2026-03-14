@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Any
+from typing import Any, AsyncIterator
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -47,6 +48,13 @@ class DatabaseManager:
     @property
     def using_in_memory_store(self) -> bool:
         return self._engine is None
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[AsyncSession]:
+        if self._session_factory is None:
+            raise RuntimeError("Database session factory is not configured")
+        async with self._session_factory() as session:
+            yield session
 
     async def ping(self) -> tuple[bool, str | None, int | None, dict[str, Any]]:
         if self._engine_error:

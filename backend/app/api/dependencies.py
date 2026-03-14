@@ -63,16 +63,15 @@ def build_container(settings: Settings | None = None) -> AppContainer:
 
     database_manager = DatabaseManager(resolved_settings)
     redis_client = build_redis_client(resolved_settings)
-    store = database_manager.store
 
-    project_repository = ProjectRepository(store)
-    brand_repository = BrandRepository(store)
-    source_repository = SourceRepository(store)
-    mention_repository = MentionRepository(store)
-    alert_repository = AlertRepository(store)
-    event_repository = EventLogRepository(store)
-    analytics_repository = AnalyticsRepository(store)
-    status_repository = ComponentStatusRepository(store)
+    project_repository = ProjectRepository(database_manager)
+    brand_repository = BrandRepository(database_manager)
+    source_repository = SourceRepository(database_manager)
+    mention_repository = MentionRepository(database_manager)
+    alert_repository = AlertRepository(database_manager)
+    event_repository = EventLogRepository(database_manager)
+    analytics_repository = AnalyticsRepository(database_manager)
+    status_repository = ComponentStatusRepository(database_manager)
 
     event_log_service = EventLogService(event_repository)
     project_service = ProjectService(project_repository, event_log_service)

@@ -6,8 +6,9 @@ import pytest
 
 from app.common.enums import CriticalityLabel, RelevanceLabel, SentimentLabel
 from app.common.types import normalize_url, sha256_hex
+from app.core.config import Settings
 from app.core.time import utc_now
-from app.infra.db.session import InMemoryStore
+from app.infra.db.session import DatabaseManager
 from app.modules.mentions.models import Mention
 from app.modules.mentions.repository import MentionRepository
 from app.modules.mentions.services.dedup import DeduplicationService
@@ -48,8 +49,8 @@ def make_mention(*, project_id: uuid.UUID, source_id: uuid.UUID, title: str, tex
 
 @pytest.mark.asyncio
 async def test_dedup_detects_hard_duplicate_by_url() -> None:
-    store = InMemoryStore()
-    repository = MentionRepository(store)
+    database_manager = DatabaseManager(Settings(database_url=None))
+    repository = MentionRepository(database_manager)
     service = DeduplicationService(repository)
     project_id = uuid.uuid4()
     source_id = uuid.uuid4()
@@ -78,8 +79,8 @@ async def test_dedup_detects_hard_duplicate_by_url() -> None:
 
 @pytest.mark.asyncio
 async def test_dedup_detects_content_duplicate_when_url_changes() -> None:
-    store = InMemoryStore()
-    repository = MentionRepository(store)
+    database_manager = DatabaseManager(Settings(database_url=None))
+    repository = MentionRepository(database_manager)
     service = DeduplicationService(repository)
     project_id = uuid.uuid4()
     source_id = uuid.uuid4()

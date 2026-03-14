@@ -7,7 +7,7 @@ import pytest
 from app.common.enums import CriticalityLabel, RelevanceLabel, SentimentLabel
 from app.core.config import Settings
 from app.core.time import utc_now
-from app.infra.db.session import InMemoryStore
+from app.infra.db.session import DatabaseManager
 from app.infra.gateways.health_gateway import ExternalHealthGateway
 from app.infra.gateways.notifier_gateway import NotifierGateway
 from app.infra.redis.client import build_redis_client
@@ -81,12 +81,19 @@ def make_mention(
 @pytest.mark.asyncio
 async def test_irrelevant_mention_does_not_create_alert() -> None:
     project_id = uuid.uuid4()
-    store = InMemoryStore()
-    brand_repository = BrandRepository(store)
-    alert_repository = AlertRepository(store)
-    event_log_service = EventLogService(EventLogRepository(store))
-    redis_client = build_redis_client(Settings())
-    notifier = NotifierGateway(Settings(), ExternalHealthGateway(1.0))
+    settings = Settings(
+        database_url=None,
+        redis_url=None,
+        ml_service_url=None,
+        collector_service_url=None,
+        notifier_webhook_url=None,
+    )
+    database_manager = DatabaseManager(settings)
+    brand_repository = BrandRepository(database_manager)
+    alert_repository = AlertRepository(database_manager)
+    event_log_service = EventLogService(EventLogRepository(database_manager))
+    redis_client = build_redis_client(settings)
+    notifier = NotifierGateway(settings, ExternalHealthGateway(1.0))
     service = AlertService(alert_repository, brand_repository, redis_client, notifier, event_log_service)
 
     brand = make_brand(project_id, threshold=1)
@@ -108,12 +115,19 @@ async def test_irrelevant_mention_does_not_create_alert() -> None:
 @pytest.mark.asyncio
 async def test_negative_relevant_mentions_trigger_once_and_cooldown_blocks_next() -> None:
     project_id = uuid.uuid4()
-    store = InMemoryStore()
-    brand_repository = BrandRepository(store)
-    alert_repository = AlertRepository(store)
-    event_log_service = EventLogService(EventLogRepository(store))
-    redis_client = build_redis_client(Settings())
-    notifier = NotifierGateway(Settings(), ExternalHealthGateway(1.0))
+    settings = Settings(
+        database_url=None,
+        redis_url=None,
+        ml_service_url=None,
+        collector_service_url=None,
+        notifier_webhook_url=None,
+    )
+    database_manager = DatabaseManager(settings)
+    brand_repository = BrandRepository(database_manager)
+    alert_repository = AlertRepository(database_manager)
+    event_log_service = EventLogService(EventLogRepository(database_manager))
+    redis_client = build_redis_client(settings)
+    notifier = NotifierGateway(settings, ExternalHealthGateway(1.0))
     service = AlertService(alert_repository, brand_repository, redis_client, notifier, event_log_service)
 
     brand = make_brand(project_id, threshold=2, cooldown=120)
