@@ -43,7 +43,7 @@ export const mockSources: Source[] = [
     project_id: 1,
     source_type: "rss",
     source_config: { feed_url: "https://example.com/rss" },
-    is_active: true,
+    is_active: false,
     poll_interval_s: 600,
     last_collected_at: "2026-03-14T10:00:00Z",
     last_error: "Feed timeout",

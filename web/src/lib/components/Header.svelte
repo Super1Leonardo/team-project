@@ -17,8 +17,8 @@
 			url: resolve('/analytics')
 		},
 		{
-			title: 'Состояние',
-			url: resolve('/health'),
+			title: 'Источники',
+			url: resolve('/sources'),
 			showErrorDot: true
 		},
 		{
