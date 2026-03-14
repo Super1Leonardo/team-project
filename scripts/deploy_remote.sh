@@ -34,6 +34,8 @@ rsync -az --delete \
   --exclude "web/.svelte-kit/" \
   --exclude "web/build/" \
   ./ "${REMOTE}:${DEPLOY_TARGET_DIR}/"
+ssh $SSH_OPTIONS "$REMOTE" "cd '$DEPLOY_TARGET_DIR' && pwd && ls -la"
+
 
 if [ -n "${DEPLOY_ENV_FILE:-}" ]; then
   tmp_env_file="$(mktemp)"
