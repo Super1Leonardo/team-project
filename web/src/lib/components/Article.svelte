@@ -19,6 +19,7 @@
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
 	import { ChevronDown, AlertCircle } from '@lucide/svelte';
+	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
 	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
 	let { cluster }: { cluster: any } = $props();
@@ -47,7 +48,7 @@
 
 		<div class="flex items-center gap-2">
 			<Badge class={sentimentColor} variant="outline">
-				{cluster.sentiment}
+				{tSentiment(cluster.sentiment as SentimentLabel)}
 			</Badge>
 
 			<HoverCard>
@@ -56,7 +57,7 @@
 						{#if cluster.mlScore < 0.7}
 							<AlertCircle size={14} class="text-yellow-500" />
 						{/if}
-						{(cluster.mlScore * 100).toFixed(0)}% Score
+						{cluster.mlScore > 0 ? (cluster.mlScore * 100).toFixed(0) : '—'}% релевантность
 					</Badge>
 				</HoverCardTrigger>
 				<HoverCardContent class="w-64 text-sm">
@@ -107,7 +108,7 @@
 							<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title}</p>
 							<div class="mt-1 flex items-center gap-2">
 								<span class="font-mono text-xs text-muted-foreground"
-									>Score: {(dup.mlScore * 100).toFixed(0)}%</span
+									>Релевантность: {dup.mlScore > 0 ? (dup.mlScore * 100).toFixed(0) : '—'}%</span
 								>
 							</div>
 						</div>
