@@ -27,8 +27,8 @@
 	const currentUrl = $derived(page.url.pathname);
 </script>
 
-<NavigationMenu.Root>
-	<NavigationMenu.List class="gap-4">
+<NavigationMenu.Root class="mx-auto">
+	<NavigationMenu.List class="md:gap-4">
 		{#each links as { title, url } (url)}
 			<NavigationMenu.Item>
 				<NavigationMenu.Link>
