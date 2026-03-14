@@ -65,6 +65,8 @@ test:
       head -n 1 "$key_file"
       echo "last line:"
       tail -n 1 "$key_file"
+      echo "derived public key:"
+      ssh-keygen -y -f "$key_file" || true
 
       if ! ssh-keygen -y -f "$key_file" >/dev/null 2>&1; then
         echo "SSH_PRIVATE_KEY is invalid or passphrase-protected. Use an unencrypted deploy key in OpenSSH/PEM format." >&2
