@@ -2,11 +2,9 @@
 	import ArticleList from '$lib/components/ArticleList.svelte';
 	import type { PageData } from './$types';
 
-	// Принимаем данные от сервера
 	let { data }: { data: PageData } = $props();
 
-	// Оборачиваем в состояние для будущих фильтров
-	let clusters = $state(data.clusters);
+	let clusters = $derived(data.clusters);
 </script>
 
 <div class="container mx-auto max-w-3xl py-8">
