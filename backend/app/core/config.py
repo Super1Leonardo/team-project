@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote_plus
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +38,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("telegram_api_id", "telegram_api_hash", "telegram_phone", mode="before")
+    @classmethod
+    def normalize_empty_telegram_values(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def credentials_configured(self) -> bool:
