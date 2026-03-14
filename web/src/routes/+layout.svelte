@@ -4,7 +4,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import { Toaster } from 'svelte-sonner';
 
-	let { children } = $props();
+	let { children, data } = $props();
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
@@ -12,7 +12,7 @@
 <Toaster richColors={true} position="top-right" />
 
 <div class="pt-4 px-8">
-	<Header />
+	<Header hasErrors={data.errorCount > 0} />
 	<div class="max-w-prose mx-auto">
 		{@render children()}
 	</div>

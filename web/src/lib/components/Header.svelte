@@ -5,6 +5,8 @@
 	import * as NavigationMenu from './ui/shadcn/navigation-menu';
 	import { navigationMenuTriggerStyle } from './ui/shadcn/navigation-menu/navigation-menu-trigger.svelte';
 
+	let { hasErrors = false }: { hasErrors?: boolean } = $props();
+
 	const links = [
 		{
 			title: 'Новости',
@@ -16,7 +18,8 @@
 		},
 		{
 			title: 'Состояние',
-			url: resolve('/health')
+			url: resolve('/health'),
+			showErrorDot: true
 		},
 		{
 			title: 'Настройки',
@@ -29,7 +32,7 @@
 
 <NavigationMenu.Root class="mx-auto">
 	<NavigationMenu.List class="md:gap-4">
-		{#each links as { title, url } (url)}
+		{#each links as { title, url, showErrorDot } (url)}
 			<NavigationMenu.Item>
 				<NavigationMenu.Link>
 					{#snippet child()}
@@ -37,12 +40,15 @@
 							href={url}
 							class={cn(
 								navigationMenuTriggerStyle(),
-								'transition-all',
+								'relative transition-all',
 								currentUrl === url &&
 									'bg-primary text-primary-foreground hover:bg-primary-foreground hover:text-primary'
 							)}
 						>
 							{title}
+							{#if showErrorDot && hasErrors}
+								<span class="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500"></span>
+							{/if}
 						</a>
 					{/snippet}
 				</NavigationMenu.Link>
