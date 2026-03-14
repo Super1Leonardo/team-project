@@ -10,6 +10,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
 
   web-prod:
     profiles: ["prod"]
@@ -23,6 +24,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
 
   e2e:
     profiles: ["e2e"]
@@ -47,10 +49,17 @@ services:
     working_dir: /app
     ports:
       - "${PYTHON_PORT:-8000}:8000"
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+      TELEGRAM_PHONE: ${TELEGRAM_PHONE:-}
+      TELEGRAM_SESSION_PATH: /app/backend/data/telegram_parser
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      PUBLIC_BACKEND_API_URL: ${PUBLIC_BACKEND_API_URL:-http://localhost:8000}
     volumes:
       - .:/app
       - pip_cache:/root/.cache/pip
-    command: sh -c "if [ -s requirements.txt ]; then pip install -r requirements.txt; fi && python -m http.server 8000"
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 volumes:
   web_node_modules:
