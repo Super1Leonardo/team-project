@@ -1,5 +1,6 @@
 services:
   web:
+    profiles: ["prod"]
     build:
       context: ./web
       dockerfile: Dockerfile
