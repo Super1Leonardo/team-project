@@ -8,7 +8,10 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 import httpx
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    BeautifulSoup = None
 
 from backend.app.collectors.base import BaseCollector
 from backend.app.common.schemas import MessageSource, ParsedMessage
@@ -294,7 +297,11 @@ class RssCollector(BaseCollector):
     def _clean_text(value: str | None) -> str:
         if not value:
             return ""
-        text = BeautifulSoup(value, "html.parser").get_text(" ", strip=True)
+        if BeautifulSoup is not None:
+            text = BeautifulSoup(value, "html.parser").get_text(" ", strip=True)
+        else:
+            text = ET.fromstring(f"<root>{value}</root>").itertext()
+            text = " ".join(part.strip() for part in text if part and part.strip())
         return " ".join(text.split())
 
     @classmethod

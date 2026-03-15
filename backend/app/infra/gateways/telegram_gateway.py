@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import re
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from urllib.parse import quote, urljoin
 
 import httpx
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    BeautifulSoup = None
 
 try:
     import qrcode
@@ -57,10 +63,12 @@ except (
 
 
 from backend.app.common.schemas import (
+    AuthStatusResponse,
     ChannelParseResult,
     MessageSource,
     ParseResponse,
     ParsedMessage,
+    UserInfo,
 )
 from backend.app.core.config import Settings
 from backend.app.modules.sources.constants import TARGET_CHANNELS
@@ -68,6 +76,41 @@ from backend.app.modules.sources.constants import TARGET_CHANNELS
 
 class TelegramServiceError(Exception):
     """Raised when public Telegram scraping fails."""
+
+
+class TelegramConfigurationError(TelegramServiceError):
+    """Raised when required Telegram credentials are missing."""
+
+
+class TelegramUnauthorizedError(TelegramServiceError):
+    """Raised when the Telegram session is not authorized."""
+
+
+class TelegramPasswordRequiredError(TelegramServiceError):
+    """Raised when Telegram account has 2FA password enabled."""
+
+
+class TelegramCodeNotRequestedError(TelegramServiceError):
+    """Raised when verify is called before requesting a code."""
+
+
+@dataclass
+class PendingCode:
+    phone: str
+    phone_code_hash: str
+    requested_at: datetime
+
+
+@dataclass
+class PendingQrLogin:
+    client: TelegramClient
+    qr_login: object
+    created_at: datetime
+    expires_at: datetime
+    wait_task: asyncio.Task | None = None
+    status: str = "pending"
+    error: str | None = None
+    user: UserInfo | None = None
 
 
 class TelegramGateway:
@@ -97,6 +140,13 @@ class TelegramGateway:
             raise TelegramConfigurationError(
                 "Telegram integration dependencies are not installed. "
                 "Install telethon and qrcode to use Telegram auth and collection."
+            )
+
+    @staticmethod
+    def _ensure_public_scraping_dependencies() -> None:
+        if BeautifulSoup is None:
+            raise TelegramServiceError(
+                "Telegram public scraping dependency is not installed. Install beautifulsoup4."
             )
 
     def _new_client(self) -> TelegramClient:
@@ -368,6 +418,7 @@ class TelegramGateway:
         limit_per_channel: int = 20,
         channels: list[str] | None = None,
     ) -> ParseResponse:
+        self._ensure_public_scraping_dependencies()
         requested_channels = channels or TARGET_CHANNELS
         all_items: list[ParsedMessage] = []
         results: list[ChannelParseResult] = []
@@ -624,3 +675,117 @@ class TelegramGateway:
     @staticmethod
     def _build_message_uid(channel_id: int, message_id: int) -> str:
         return f"telegram:{channel_id}:{message_id}"
+
+    async def _wait_for_qr_login(self, pending: PendingQrLogin) -> None:
+        try:
+            timeout = max((pending.expires_at - datetime.now(UTC)).total_seconds(), 1)
+            await pending.qr_login.wait(timeout=timeout)
+            me = await pending.client.get_me()
+            pending.user = self._user_to_model(me)
+            pending.status = "authorized"
+            pending.error = None
+        except SessionPasswordNeededError:
+            pending.status = "password_required"
+            pending.error = None
+            return
+        except asyncio.TimeoutError:
+            pending.status = "expired"
+            pending.error = "QR code expired. Generate a new one."
+        except asyncio.CancelledError:
+            pending.status = "cancelled"
+            pending.error = "QR login was cancelled."
+            raise
+        except Exception as exc:
+            pending.status = "error"
+            pending.error = str(exc)
+        finally:
+            if pending.status in {"authorized", "expired", "error", "cancelled"}:
+                await self._disconnect_client(pending.client)
+
+    async def _clear_pending_qr(self) -> None:
+        pending = self._pending_qr
+        if pending is None:
+            return
+
+        if pending.wait_task and not pending.wait_task.done():
+            pending.wait_task.cancel()
+            try:
+                await pending.wait_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+        await self._disconnect_client(pending.client)
+        self._pending_qr = None
+
+    async def _disconnect_client(self, client: TelegramClient) -> None:
+        if client.is_connected():
+            await client.disconnect()
+
+    def _serialize_qr_state(self, pending: PendingQrLogin) -> dict:
+        qr_url = pending.qr_login.url if pending.status == "pending" else None
+        qr_image_data_url = self._build_qr_image_data_url(qr_url) if qr_url else None
+        return {
+            "authorized": pending.status == "authorized",
+            "status": pending.status,
+            "message": self._qr_status_message(pending.status),
+            "user": pending.user.model_dump() if pending.user else None,
+            "qr_url": qr_url,
+            "qr_image_data_url": qr_image_data_url,
+            "expires_at": pending.expires_at.isoformat(),
+            "error": pending.error,
+            "next_step": self._qr_next_step(pending.status),
+        }
+
+    @staticmethod
+    def _qr_status_message(status: str) -> str:
+        messages = {
+            "pending": "Scan the QR code with Telegram on another authorized device.",
+            "password_required": "Telegram accepted the QR scan. Enter your 2FA password to finish login.",
+            "authorized": "Telegram session authorized via QR login.",
+            "expired": "QR code expired. Generate a new one.",
+            "error": "QR login failed.",
+            "cancelled": "QR login cancelled.",
+        }
+        return messages.get(status, "QR login is idle.")
+
+    @staticmethod
+    def _qr_next_step(status: str) -> str:
+        steps = {
+            "pending": "Open Telegram on another already authorized device and scan this QR code.",
+            "password_required": "Enter your Telegram 2FA password below.",
+            "authorized": "You can load messages now.",
+            "expired": "Generate a fresh QR code and scan it again.",
+            "error": "Start a new QR login attempt.",
+            "cancelled": "Generate a fresh QR code to continue.",
+        }
+        return steps.get(status, "Generate a QR code to start login.")
+
+    @staticmethod
+    def _serialize_sent_code(sent_code) -> dict:
+        sent_type = getattr(sent_code, "type", None)
+        next_type = getattr(sent_code, "next_type", None)
+        return {
+            "delivery_type": sent_type.__class__.__name__ if sent_type else None,
+            "next_delivery_type": next_type.__class__.__name__ if next_type else None,
+            "timeout": getattr(sent_code, "timeout", None),
+        }
+
+    @staticmethod
+    def _build_qr_image_data_url(qr_url: str) -> str:
+        buffer = BytesIO()
+        image = qrcode.make(qr_url, image_factory=SvgPathImage)
+        image.save(buffer)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+
+    @staticmethod
+    def _user_to_model(user) -> UserInfo:
+        return UserInfo(
+            id=user.id,
+            username=getattr(user, "username", None),
+            phone=getattr(user, "phone", None),
+            first_name=getattr(user, "first_name", None),
+            last_name=getattr(user, "last_name", None),
+        )
