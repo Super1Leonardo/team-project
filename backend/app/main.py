@@ -1,40 +1,22 @@
 import asyncio
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.api.dependencies import (
-    get_app_settings,
-    get_brandradar_clickhouse_store,
-    get_brandradar_postgres_store,
-    get_brandradar_runtime,
-    get_messages_repository,
-    get_ml_results_repository,
-    get_sources_repository,
-)
+from backend.app.api.dependencies import get_app_settings, get_brandradar_runtime
 from backend.app.api.router import api_router
 from backend.app.core.exception_handlers import register_exception_handlers
-
-logger = logging.getLogger(__name__)
+from backend.app.infra.db.clickhouse import ClickHouseMentionEventsStore
+from backend.app.infra.db.postgres import BrandRadarPostgresStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_app_settings()
     settings.telegram_session_path.parent.mkdir(parents=True, exist_ok=True)
-    get_sources_repository().init_db()
-    get_ml_results_repository().init_db()
-    get_brandradar_postgres_store().init_db()
-    try:
-        get_messages_repository().init_db()
-    except Exception:
-        logger.exception("Raw messages ClickHouse init failed; continuing in degraded mode.")
-    try:
-        get_brandradar_clickhouse_store().init_db()
-    except Exception:
-        logger.exception("Mention events ClickHouse init failed; continuing in degraded mode.")
+    BrandRadarPostgresStore(settings).init_db()
+    ClickHouseMentionEventsStore(settings).init_db()
     runtime = get_brandradar_runtime()
     stop_event = asyncio.Event()
     worker_tasks = [

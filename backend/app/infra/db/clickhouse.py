@@ -7,10 +7,7 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-try:
-    import clickhouse_connect
-except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
-    clickhouse_connect = None
+import clickhouse_connect
 
 from backend.app.common.schemas import (
     MessageSource,
@@ -81,10 +78,6 @@ class ClickHouseMessageStore:
                 time.sleep(delay_seconds)
 
         raise ClickHouseMessageStoreError("Failed to initialize ClickHouse.") from last_error
-
-    def ping(self) -> None:
-        with self._client(database=self._database) as client:
-            client.query("SELECT 1")
 
     def store_messages(self, messages: list[ParsedMessage]) -> int:
         if not messages:
@@ -227,10 +220,6 @@ class ClickHouseMessageStore:
 
     @contextmanager
     def _client(self, database: str):
-        if clickhouse_connect is None:
-            raise ClickHouseMessageStoreError(
-                "clickhouse_connect is not installed."
-            )
         client = clickhouse_connect.get_client(
             host=self.settings.clickhouse_host,
             port=self.settings.clickhouse_port,
@@ -434,10 +423,6 @@ class ClickHouseMentionEventsStore:
 
     @contextmanager
     def _client(self, database: str):
-        if clickhouse_connect is None:
-            raise ClickHouseMessageStoreError(
-                "clickhouse_connect is not installed."
-            )
         client = clickhouse_connect.get_client(
             host=self.settings.clickhouse_host,
             port=self.settings.clickhouse_port,

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from backend.app.infra.db.clickhouse import ClickHouseMentionEventsStore
 from backend.app.infra.db.postgres import BrandRadarPostgresStore
 from backend.app.ml.ml_gateway import ExternalMLGateway
 from backend.app.ml.normalizer import MLResultNormalizer
-
-logger = logging.getLogger(__name__)
 
 
 class MLWorker:
@@ -68,10 +65,7 @@ class MLWorker:
         event = stop_event or asyncio.Event()
 
         while not event.is_set():
-            try:
-                await self.run_once()
-            except Exception:
-                logger.exception("ML worker iteration failed.")
+            await self.run_once()
             try:
                 await asyncio.wait_for(event.wait(), timeout=self.idle_sleep_seconds)
             except TimeoutError:

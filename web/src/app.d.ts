@@ -4,10 +4,7 @@ declare global {
 	namespace App {
 		// interface Error {}
 		// interface Locals {}
-		interface PageData {
-			sources?: import('$lib/server/sources').Source[];
-			errorCount?: number;
-		}
+		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}
 	}
