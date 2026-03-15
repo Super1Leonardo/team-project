@@ -37,8 +37,6 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-      ml:
-        condition: service_started
     build:
       context: .
       dockerfile: Dockerfile.python
@@ -57,7 +55,7 @@ services:
       CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-brandradar_ml}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-brandradar}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-brandradar}
-      EXTERNAL_ML_BASE_URL: ${EXTERNAL_ML_BASE_URL:-http://ml:5000}
+      EXTERNAL_ML_BASE_URL: ${EXTERNAL_ML_BASE_URL:-http://178.154.216.255}
       EXTERNAL_ML_PREDICT_PATH: ${EXTERNAL_ML_PREDICT_PATH:-/predict}
       EXTERNAL_ML_TIMEOUT_SECONDS: ${EXTERNAL_ML_TIMEOUT_SECONDS:-60}
       COLLECTOR_PER_SOURCE_LIMIT: ${COLLECTOR_PER_SOURCE_LIMIT:-100}
@@ -70,14 +68,6 @@ services:
       - .:/app
       - pip_cache:/root/.cache/pip
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-
-  ml:
-    build:
-      context: ./ml-prod
-      dockerfile: Dockerfile
-    profiles: ["python", "prod"]
-    ports:
-      - "${ML_PORT:-5000}:5000"
 
   postgres:
     image: pgvector/pgvector:pg16
