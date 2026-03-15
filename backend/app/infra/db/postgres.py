@@ -47,7 +47,7 @@ class BrandRadarPostgresStore:
                             source_type TEXT NOT NULL,
                             source_config JSONB NOT NULL,
                             is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                            poll_interval_s INT NOT NULL DEFAULT 300,
+                            poll_interval_s INT NOT NULL DEFAULT 60,
                             last_collected_at TIMESTAMPTZ,
                             last_error TEXT,
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -301,7 +301,7 @@ class BrandRadarPostgresStore:
         source_type: str,
         source_config: dict[str, Any],
         is_active: bool = True,
-        poll_interval_s: int = 300,
+        poll_interval_s: int = 60,
     ) -> dict[str, Any]:
         if source_type not in SUPPORTED_SOURCE_TYPES:
             raise DomainValidationError(

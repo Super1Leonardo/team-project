@@ -24,7 +24,7 @@ class SourcesService:
             selected_channels=self.repository.selected_telegram_channels,
             available_channels=self.repository.available_telegram_channels,
             available_sources=self.repository.get_source_selection()["sources"],
-            auth_methods=AuthMethodsResponse(code=True, qr=True),
+            auth_methods=AuthMethodsResponse(code=False, qr=False),
             docs_url="/docs",
             health_url="/api/health",
         )

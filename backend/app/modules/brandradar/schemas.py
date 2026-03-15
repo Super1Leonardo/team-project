@@ -74,7 +74,7 @@ class SourceCreateRequest(BaseModel):
     source_type: SourceType
     source_config: dict[str, Any]
     is_active: bool = True
-    poll_interval_s: int = Field(default=300, ge=1)
+    poll_interval_s: int = Field(default=60, ge=1)
 
 
 class SourceUpdateRequest(BaseModel):

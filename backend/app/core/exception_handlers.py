@@ -10,13 +10,7 @@ from backend.app.core.exceptions import (
     ResourceNotFoundError,
 )
 from backend.app.infra.db.clickhouse import ClickHouseMessageStoreError
-from backend.app.infra.gateways.telegram_gateway import (
-    TelegramCodeNotRequestedError,
-    TelegramConfigurationError,
-    TelegramPasswordRequiredError,
-    TelegramServiceError,
-    TelegramUnauthorizedError,
-)
+from backend.app.infra.gateways.telegram_gateway import TelegramServiceError
 
 
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -41,23 +35,9 @@ async def _handle_not_found(_: Request, exc: ResourceNotFoundError) -> JSONRespo
     return _error_response(404, "NOT_FOUND", str(exc))
 
 
-async def _handle_telegram_configuration(
-    _: Request,
-    exc: TelegramConfigurationError,
-) -> JSONResponse:
-    return _error_response(400, "CONFIGURATION_ERROR", str(exc))
-
-
-async def _handle_telegram_unauthorized(
-    _: Request,
-    exc: TelegramUnauthorizedError | TelegramPasswordRequiredError,
-) -> JSONResponse:
-    return _error_response(401, "UNAUTHORIZED", str(exc))
-
-
 async def _handle_telegram_bad_request(
     _: Request,
-    exc: TelegramServiceError | TelegramCodeNotRequestedError,
+    exc: TelegramServiceError,
 ) -> JSONResponse:
     return _error_response(400, "BAD_REQUEST", str(exc))
 
@@ -100,22 +80,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         FeatureNotImplementedError,
         _handle_feature_not_implemented,
-    )
-    app.add_exception_handler(
-        TelegramConfigurationError,
-        _handle_telegram_configuration,
-    )
-    app.add_exception_handler(
-        TelegramUnauthorizedError,
-        _handle_telegram_unauthorized,
-    )
-    app.add_exception_handler(
-        TelegramPasswordRequiredError,
-        _handle_telegram_unauthorized,
-    )
-    app.add_exception_handler(
-        TelegramCodeNotRequestedError,
-        _handle_telegram_bad_request,
     )
     app.add_exception_handler(
         TelegramServiceError,

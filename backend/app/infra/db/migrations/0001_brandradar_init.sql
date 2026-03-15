@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS sources (
     source_type TEXT NOT NULL,
     source_config JSONB NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    poll_interval_s INT NOT NULL DEFAULT 300,
+    poll_interval_s INT NOT NULL DEFAULT 60,
     last_collected_at TIMESTAMPTZ,
     last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

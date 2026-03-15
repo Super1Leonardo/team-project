@@ -1,8 +1,1 @@
-from backend.app.common.schemas import (
-    AuthSendCodeRequest,
-    AuthStatusResponse,
-    AuthVerifyCodeRequest,
-    ParseResponse,
-    PasswordRequest,
-    QrLoginResponse,
-)
+from backend.app.common.schemas import ParseResponse
