@@ -35,30 +35,18 @@ async function getOrCreateProject(): Promise<Project | null> {
 
 export const load: PageServerLoad = async () => {
 	const project = await getOrCreateProject();
-	let clusters: any[] = [];
+	let mentions: any[] = [];
 
 	if (project) {
 		// Тянем реальные данные с бэкенда
-		const response = await fetchJson<{items: any[]}>(`${API_BASE_URL}/api/projects/${project.id}/mentions?limit=50`);
+		const response = await fetchJson<any[]>(`${API_BASE_URL}/api/projects/${project.id}/mentions?limit=50`);
 		
-		if (response && response.items) {
-			// Мапим ответ API под интерфейс Cluster, который ожидает ArticleList.svelte
-			clusters = response.items.map(m => ({
-				id: String(m.id),
-				title: m.title || m.author || 'Без заголовка',
-				source: m.source_type,
-				publishedAt: m.published_at,
-				sentiment: m.sentiment_label || 'neutral',
-				// Преобразуем 0.0-1.0 в проценты для отображения уверенности модели
-				mlScore: Math.round((m.relevance_score || 0) * 100),
-				riskWords: m.has_risk_words ? ['Внимание: слова риска'] : [],
-				text: m.text || '',
-				duplicates: [] // Пока дедупликация на бэке агрегирует группы, оставим пустым
-			}));
+		if (Array.isArray(response)) {
+			mentions = response;
 		}
 	}
 
 	return {
-		clusters
+		mentions
 	};
 };

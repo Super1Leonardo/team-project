@@ -1,17 +1,27 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/shadcn/card';
-	import * as Select from '$lib/components/ui/shadcn/select';
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
+	import { minMlScore, timeframe } from '$lib/stores/filters';
 
 	let { data } = $props();
 
-	let timeframe = $state('7d');
-	let minMlScoreStr = $state('0.7');
+	let minMlScoreValue = $derived(parseFloat($minMlScore));
 
-	let minMlScore = $derived(parseFloat(minMlScoreStr));
-
-	let chartData = $derived(data.timeline.filter((day: any) => day.mlConfidence >= minMlScore));
+	let chartData = $derived(
+		data.timeline.map((day: any) => {
+			if (day.mlConfidence >= minMlScoreValue) {
+				return day;
+			}
+			return {
+				...day,
+				positive: 0,
+				negative: 0,
+				neutral: 0
+			};
+		})
+	);
 
 	let hasNoTimelineData = $derived(data.timeline.length === 0);
 	let hasNoFilteredData = $derived(chartData.length === 0 && data.timeline.length > 0);
@@ -22,31 +32,7 @@
 >
 	<Heading>Аналитика репутации</Heading>
 
-	<div class="flex items-center flex-wrap gap-4">
-		<div class="text-lg font-semibold">Фильтры:</div>
-
-		<Select.Root type="single" bind:value={minMlScoreStr}>
-			<Select.Trigger class="w-50">
-				ML Уверенность: &ge; {minMlScoreStr}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="0.5">&ge; 0.5 (Все данные)</Select.Item>
-				<Select.Item value="0.7">&ge; 0.7 (Базовая норма)</Select.Item>
-				<Select.Item value="0.9">&ge; 0.9 (Высокая точность)</Select.Item>
-			</Select.Content>
-		</Select.Root>
-
-		<Select.Root type="single" bind:value={timeframe}>
-			<Select.Trigger class="w-40">
-				Период: {timeframe}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="24h">За 24 часа</Select.Item>
-				<Select.Item value="7d">За 7 дней</Select.Item>
-				<Select.Item value="30d">За 30 дней</Select.Item>
-			</Select.Content>
-		</Select.Root>
-	</div>
+	<FilterBar />
 
 {#if hasNoTimelineData}
 	<div class="text-center text-muted-foreground py-8">
@@ -92,7 +78,7 @@
 			Нет статистики по выбранным фильтрам
 		</div>
 	{:else}
-		<TimelineChart {chartData} {minMlScoreStr} />
+		<TimelineChart {chartData} minMlScoreStr={$minMlScore} />
 	{/if}
 {/if}
 </div>
