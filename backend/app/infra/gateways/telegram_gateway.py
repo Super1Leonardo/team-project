@@ -7,17 +7,46 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 
-import qrcode
-from qrcode.image.svg import SvgPathImage
-from telethon import TelegramClient
-from telethon.errors import (
-    ApiIdInvalidError,
-    PhoneCodeExpiredError,
-    PhoneCodeInvalidError,
-    PhoneNumberInvalidError,
-    SessionPasswordNeededError,
-)
-from telethon.tl.types import ReactionCustomEmoji, ReactionEmoji
+try:
+    import qrcode
+    from qrcode.image.svg import SvgPathImage
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    qrcode = None
+    SvgPathImage = None
+
+try:
+    from telethon import TelegramClient
+    from telethon.errors import (
+        ApiIdInvalidError,
+        PhoneCodeExpiredError,
+        PhoneCodeInvalidError,
+        PhoneNumberInvalidError,
+        SessionPasswordNeededError,
+    )
+    from telethon.tl.types import ReactionCustomEmoji, ReactionEmoji
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    TelegramClient = None
+
+    class ApiIdInvalidError(Exception):
+        pass
+
+    class PhoneCodeExpiredError(Exception):
+        pass
+
+    class PhoneCodeInvalidError(Exception):
+        pass
+
+    class PhoneNumberInvalidError(Exception):
+        pass
+
+    class SessionPasswordNeededError(Exception):
+        pass
+
+    class ReactionCustomEmoji:  # type: ignore[no-redef]
+        pass
+
+    class ReactionEmoji:  # type: ignore[no-redef]
+        pass
 
 from backend.app.common.schemas import (
     AuthStatusResponse,
@@ -79,9 +108,18 @@ class TelegramGateway:
         self._qr_lock = asyncio.Lock()
 
     def _ensure_credentials(self) -> None:
+        self._ensure_runtime_dependencies()
         if not self.settings.credentials_configured:
             raise TelegramConfigurationError(
                 "Set TELEGRAM_API_ID and TELEGRAM_API_HASH before using the parser."
+            )
+
+    @staticmethod
+    def _ensure_runtime_dependencies() -> None:
+        if TelegramClient is None or qrcode is None or SvgPathImage is None:
+            raise TelegramConfigurationError(
+                "Telegram integration dependencies are not installed. "
+                "Install telethon and qrcode to use Telegram auth and collection."
             )
 
     def _new_client(self) -> TelegramClient:
