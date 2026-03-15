@@ -19,7 +19,7 @@ FROM mcr.microsoft.com/playwright:v1.58.2-noble AS playwright
 WORKDIR /app
 COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --ignore-scripts
+RUN bun install --ignore-scripts
 COPY . .
 CMD ["bun", "run", "test:e2e"]
 
