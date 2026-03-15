@@ -2,34 +2,22 @@
 	import { enhance } from '$app/forms';
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import { Switch } from '$lib/components/ui/shadcn/switch';
-	import { Send, MessageCircle, Radio } from '@lucide/svelte';
-	import { tSourceType, tSourceStatus, tSourceError, type SourceType } from '$lib/utils';
+	import { Send, MessageCircle, Radio, Server, Database, BrainCircuit } from '@lucide/svelte';
+	import { tSourceType, tSourceStatus, tSourceError, tHealthStatus, tDbStatus, type SourceType } from '$lib/utils';
 
 	let { data } = $props();
 
-	function getSourceDisplayConfig(source: (typeof data.sources)[0]): string {
-		if (source.source_type === 'telegram') {
-			return `@${source.source_config.channel}`;
-		}
-		if (source.source_type === 'vk') {
-			return source.source_config.domain || `ID: ${source.source_config.group_id}`;
-		}
-		if (source.source_type === 'rss') {
-			return source.source_config.feed_url || 'Нет URL';
-		}
-		return 'Неизвестно';
-	}
+	const health = $derived(data.health);
+	const healthStatus = $derived(health?.status ?? null);
 
-	function getSourceStatus(source: (typeof data.sources)[0]): 'ok' | 'error' | 'stale' {
-		if (source.last_error) return 'error';
-		if (!source.last_collected_at) return 'stale';
-
-		const lastCollected = new Date(source.last_collected_at);
-		const now = new Date();
-		const diffMinutes = (now.getTime() - lastCollected.getTime()) / (1000 * 60);
-
-		if (diffMinutes > (source.poll_interval_s / 60) * 1.5) return 'stale';
-		return 'ok';
+	function getHealthColor(status: string | null): string {
+		if (!status) return 'bg-yellow-500';
+		switch (status) {
+			case 'healthy': return 'bg-green-500';
+			case 'degraded': return 'bg-yellow-500';
+			case 'unhealthy': return 'bg-red-500';
+			default: return 'bg-yellow-500';
+		}
 	}
 
 	function getStatusColor(status: 'ok' | 'error' | 'stale'): string {
@@ -46,10 +34,56 @@
 	function getStatusText(status: 'ok' | 'error' | 'stale'): string {
 		return tSourceStatus(status);
 	}
+
+	function getSourceStatus(source: (typeof data.sources)[0]): 'ok' | 'error' | 'stale' {
+		if (source.last_error) return 'error';
+		if (!source.last_collected_at) return 'stale';
+
+		const lastCollected = new Date(source.last_collected_at);
+		const now = new Date();
+		const diffMinutes = (now.getTime() - lastCollected.getTime()) / (1000 * 60);
+
+		if (diffMinutes > (source.poll_interval_s / 60) * 1.5) return 'stale';
+		return 'ok';
+	}
+
+	function getSourceDisplayConfig(source: (typeof data.sources)[0]): string {
+		if (source.source_type === 'telegram') {
+			return `@${source.source_config.channel}`;
+		}
+		if (source.source_type === 'vk') {
+			return source.source_config.domain || `ID: ${source.source_config.group_id}`;
+		}
+		if (source.source_type === 'rss') {
+			return source.source_config.feed_url || 'Нет URL';
+		}
+		return 'Неизвестно';
+	}
 </script>
 
 <div class="container mx-auto max-w-3xl py-4">
 	<Heading>Источники и статус сбора</Heading>
+
+	<div class="mb-4 p-3 rounded-lg border bg-card">
+		<div class="flex items-center gap-2 mb-2">
+			<span class={getHealthColor(healthStatus)} class:w-3={true} class:h-3={true} class:rounded-full={true}></span>
+			<span class="font-medium">Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span>
+		</div>
+		<div class="flex gap-4 text-sm text-muted-foreground">
+			<div class="flex items-center gap-1">
+				<Database class="w-4 h-4" />
+				<span>PostgreSQL: {health?.postgres ? tDbStatus(health.postgres) : '?'}</span>
+			</div>
+			<div class="flex items-center gap-1">
+				<Server class="w-4 h-4" />
+				<span>ClickHouse: {health?.clickhouse ? tDbStatus(health.clickhouse) : '?'}</span>
+			</div>
+			<div class="flex items-center gap-1">
+				<BrainCircuit class="w-4 h-4" />
+				<span>ML очередь: {health?.ml_queue_size ?? '?'}</span>
+			</div>
+		</div>
+	</div>
 
 	<section>
 		{#if data.sources}

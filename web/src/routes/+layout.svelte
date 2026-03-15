@@ -12,7 +12,7 @@
 <Toaster richColors={true} position="top-right" />
 
 <div class="pt-4 px-8">
-	<Header hasErrors={data.errorCount > 0} />
+	<Header health={data.health} />
 	<div class="max-w-prose mx-auto">
 		{@render children()}
 	</div>

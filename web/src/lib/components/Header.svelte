@@ -5,7 +5,7 @@
 	import * as NavigationMenu from './ui/shadcn/navigation-menu';
 	import { navigationMenuTriggerStyle } from './ui/shadcn/navigation-menu/navigation-menu-trigger.svelte';
 
-	let { hasErrors = false }: { hasErrors?: boolean } = $props();
+	let { health = null }: { health?: { status: string; postgres: string; clickhouse: string; ml_queue_size: number } | null } = $props();
 
 	const links = [
 		{
@@ -28,6 +28,16 @@
 	];
 
 	const currentUrl = $derived(page.url.pathname);
+
+	function getHealthColor(status: string | null): string {
+		if (!status) return 'bg-yellow-500';
+		switch (status) {
+			case 'healthy': return 'bg-green-500';
+			case 'degraded': return 'bg-yellow-500';
+			case 'unhealthy': return 'bg-red-500';
+			default: return 'bg-yellow-500';
+		}
+	}
 </script>
 
 <NavigationMenu.Root class="mx-auto">
@@ -46,8 +56,8 @@
 							)}
 						>
 							{title}
-							{#if showErrorDot && hasErrors}
-								<span class="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500"></span>
+							{#if showErrorDot && health?.status && health.status !== 'healthy'}
+								<span class={cn("absolute -right-1 -top-1 h-3 w-3 rounded-full", getHealthColor(health.status))}></span>
 							{/if}
 						</a>
 					{/snippet}

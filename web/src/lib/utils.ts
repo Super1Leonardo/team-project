@@ -53,6 +53,15 @@ export const translations = {
 		"HTTP error 404": "Ресурс не найден",
 		"Connection error": "Ошибка соединения",
 		"Parse error": "Ошибка парсинга"
+	},
+	healthStatus: {
+		healthy: "Работает",
+		degraded: "Деградировал",
+		unhealthy: "Не работает"
+	},
+	dbStatus: {
+		healthy: "Работает",
+		unhealthy: "Не работает"
 	}
 } as const;
 
@@ -64,6 +73,8 @@ export type SourceType = keyof typeof translations.sourceType;
 export type SourceStatus = keyof typeof translations.sourceStatus;
 export type EventType = keyof typeof translations.eventType;
 export type SourceError = keyof typeof translations.sourceError;
+export type HealthStatus = keyof typeof translations.healthStatus;
+export type DbStatus = keyof typeof translations.dbStatus;
 
 export function tSentiment(value: SentimentLabel): string {
 	return translations.sentiment[value] ?? value;
@@ -95,6 +106,14 @@ export function tEventType(value: EventType): string {
 
 export function tSourceError(value: string): string {
 	return translations.sourceError[value as SourceError] ?? value;
+}
+
+export function tHealthStatus(value: HealthStatus): string {
+	return translations.healthStatus[value] ?? value;
+}
+
+export function tDbStatus(value: DbStatus): string {
+	return translations.dbStatus[value] ?? value;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
