@@ -150,7 +150,7 @@ ${DEPLOY_BASE_PATH}/${CI_COMMIT_REF_SLUG}
 - выполнит:
 
 ```bash
-docker compose --profile python up -d --build --remove-orphans
+docker compose up -d --build --remove-orphans
 ```
 
 Пример preview-пути для ветки `feature/deploy-guide`:
@@ -204,7 +204,7 @@ ${DEPLOY_BASE_PATH}/production
 И выполнит:
 
 ```bash
-docker compose --profile python up -d --build --remove-orphans
+docker compose up -d --build --remove-orphans
 ```
 
 ## 7. Полный сценарий от начала до конца
@@ -249,7 +249,7 @@ docker compose logs -f web
 Перезапустить вручную:
 
 ```bash
-docker compose --profile python up -d --build --remove-orphans
+docker compose up -d --build --remove-orphans
 ```
 
 ## 9. Частые проблемы

@@ -51,7 +51,7 @@ else
   echo "DEPLOY_ENV_FILE is not set, keeping existing remote .env if present"
 fi
 
-REMOTE_APP_UP_CMD="${REMOTE_APP_UP_CMD:-docker compose --profile python --profile prod up -d --build --pull always --remove-orphans}"
+REMOTE_APP_UP_CMD="${REMOTE_APP_UP_CMD:-docker compose up -d --build --pull always --remove-orphans}"
 
 echo "Starting deployment on remote server"
 ssh $SSH_OPTIONS "$REMOTE" "cd '$DEPLOY_TARGET_DIR' && $REMOTE_APP_UP_CMD"
