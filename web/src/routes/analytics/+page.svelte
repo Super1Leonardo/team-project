@@ -2,20 +2,23 @@
 	import * as Card from '$lib/components/ui/shadcn/card';
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import Heading from '$lib/components/ui/Heading.svelte';
-
-	// Правильный импорт графика из layerchart (ставится вместе с chart из shadcn)
+	import * as Chart from '$lib/components/ui/shadcn/chart/index.js';
+	import { scaleBand } from 'd3-scale';
 	import { BarChart } from 'layerchart';
 
 	let { data } = $props();
 
-	// 1. ИСПРАВЛЕНИЕ: Стейты селектов теперь строго строки
+	const chartConfig = {
+		positive: { label: 'Позитив', color: 'var(--chart-2)' },
+		neutral: { label: 'Нейтрально', color: 'var(--color-muted-foreground)' },
+		negative: { label: 'Негатив', color: 'var(--color-destructive)' }
+	} satisfies Chart.ChartConfig;
+
 	let timeframe = $state('7d');
 	let minMlScoreStr = $state('0.7');
 
-	// Для фильтрации парсим строку обратно в число
 	let minMlScore = $derived(parseFloat(minMlScoreStr));
 
-	// Реактивное перестроение графика
 	let chartData = $derived(data.timeline.filter((day: any) => day.mlConfidence >= minMlScore));
 </script>
 
@@ -91,18 +94,29 @@
 		</Card.Header>
 		<Card.Content>
 			<div class="h-87.5 w-full">
-				<BarChart
-					data={chartData}
-					x="date"
-					series={[
-						{ key: 'positive', color: 'hsl(var(--chart-2))', label: 'Позитив' },
-						{ key: 'neutral', color: 'hsl(var(--muted-foreground))', label: 'Нейтрально' },
-						{ key: 'negative', color: 'hsl(var(--destructive))', label: 'Негатив' }
-					]}
-					props={{
-						bars: { radius: 4, stroke: 'none' }
-					}}
-				/>
+				<Chart.Container config={chartConfig} class="h-full w-full">
+					<BarChart
+						data={chartData}
+						xScale={scaleBand().padding(0.25)}
+						x="date"
+						axis="x"
+						seriesLayout="group"
+						legend
+						series={[
+							{ key: 'positive', color: chartConfig.positive.color },
+							{ key: 'neutral', color: chartConfig.neutral.color },
+							{ key: 'negative', color: chartConfig.negative.color }
+						]}
+						props={{
+							xAxis: { format: (d: string) => d.slice(5) },
+							bars: { radius: 4, stroke: 'none' }
+						}}
+					>
+						{#snippet tooltip()}
+							<Chart.Tooltip />
+						{/snippet}
+					</BarChart>
+				</Chart.Container>
 			</div>
 		</Card.Content>
 	</Card.Root>
