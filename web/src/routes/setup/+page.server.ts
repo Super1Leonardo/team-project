@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
 
@@ -66,7 +67,7 @@ export const actions: Actions = {
 		);
 
 		if (!result) {
-			return { success: false, error: "Failed to update project" };
+			return fail(500, { error: "Не удалось сохранить настройки" });
 		}
 
 		return { success: true, message: 'Настройки сохранены', project: result };
