@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from urllib.parse import quote, urljoin
 
