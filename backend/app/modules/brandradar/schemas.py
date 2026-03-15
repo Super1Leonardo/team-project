@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 RelevanceLabel = Literal["relevant", "irrelevant"]
 SentimentLabel = Literal["positive", "neutral", "negative"]
-SourceType = Literal["telegram", "vk", "dzen", "rss"]
+SourceType = Literal["telegram", "vk", "dzen", "rss", "website"]
 T = TypeVar("T")
 
 

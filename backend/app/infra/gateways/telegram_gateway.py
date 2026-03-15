@@ -1,60 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import re
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from urllib.parse import quote, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
-
-try:
-    import qrcode
-    from qrcode.image.svg import SvgPathImage
-except (
-    ModuleNotFoundError
-):  # pragma: no cover - optional dependency for local/dev setups
-    qrcode = None
-    SvgPathImage = None
-
-try:
-    from telethon import TelegramClient
-    from telethon.errors import (
-        ApiIdInvalidError,
-        PhoneCodeExpiredError,
-        PhoneCodeInvalidError,
-        PhoneNumberInvalidError,
-        SessionPasswordNeededError,
-    )
-    from telethon.tl.types import ReactionCustomEmoji, ReactionEmoji
-except (
-    ModuleNotFoundError
-):  # pragma: no cover - optional dependency for local/dev setups
-    TelegramClient = None
-
-    class ApiIdInvalidError(Exception):
-        pass
-
-    class PhoneCodeExpiredError(Exception):
-        pass
-
-    class PhoneCodeInvalidError(Exception):
-        pass
-
-    class PhoneNumberInvalidError(Exception):
-        pass
-
-    class SessionPasswordNeededError(Exception):
-        pass
-
-    class ReactionCustomEmoji:  # type: ignore[no-redef]
-        pass
-
-    class ReactionEmoji:  # type: ignore[no-redef]
-        pass
-
 
 from backend.app.common.schemas import (
     ChannelParseResult,
@@ -63,7 +15,6 @@ from backend.app.common.schemas import (
     ParsedMessage,
 )
 from backend.app.core.config import Settings
-from backend.app.modules.sources.constants import TARGET_CHANNELS
 
 
 class TelegramServiceError(Exception):
@@ -80,295 +31,20 @@ class TelegramGateway:
                 "Chrome/133.0.0.0 Safari/537.36"
             )
         }
-        self._pending_codes: dict[str, PendingCode] = {}
-        self._pending_qr: PendingQrLogin | None = None
-        self._qr_lock = asyncio.Lock()
-
-    def _ensure_credentials(self) -> None:
-        self._ensure_runtime_dependencies()
-        if not self.settings.credentials_configured:
-            raise TelegramConfigurationError(
-                "Set TELEGRAM_API_ID and TELEGRAM_API_HASH before using the parser."
-            )
-
-    @staticmethod
-    def _ensure_runtime_dependencies() -> None:
-        if TelegramClient is None or qrcode is None or SvgPathImage is None:
-            raise TelegramConfigurationError(
-                "Telegram integration dependencies are not installed. "
-                "Install telethon and qrcode to use Telegram auth and collection."
-            )
-
-    def _new_client(self) -> TelegramClient:
-        self._ensure_credentials()
-        return TelegramClient(
-            str(self.settings.telegram_session_path),
-            self.settings.telegram_api_id,
-            self.settings.telegram_api_hash,
-        )
-
-    @asynccontextmanager
-    async def _client(self):
-        client = self._new_client()
-        await client.connect()
-        try:
-            yield client
-        finally:
-            await client.disconnect()
-
-    async def get_auth_status(
-        self,
-        selected_channels: list[str] | None = None,
-    ) -> AuthStatusResponse:
-        channels = selected_channels or TARGET_CHANNELS
-        if not self.settings.credentials_configured:
-            return AuthStatusResponse(
-                configured=False,
-                authorized=False,
-                phone_hint=self.settings.telegram_phone,
-                user=None,
-                selected_channels=channels,
-            )
-
-        pending = self._pending_qr
-        if pending and pending.status in {"pending", "password_required"}:
-            return AuthStatusResponse(
-                configured=True,
-                authorized=False,
-                phone_hint=self.settings.telegram_phone,
-                user=None,
-                selected_channels=channels,
-            )
-
-        if pending and pending.status == "authorized" and pending.user:
-            return AuthStatusResponse(
-                configured=True,
-                authorized=True,
-                phone_hint=self.settings.telegram_phone,
-                user=pending.user,
-                selected_channels=channels,
-            )
-
-        async with self._client() as client:
-            authorized = await client.is_user_authorized()
-            user = None
-            if authorized:
-                me = await client.get_me()
-                user = self._user_to_model(me)
-
-            return AuthStatusResponse(
-                configured=True,
-                authorized=authorized,
-                phone_hint=self.settings.telegram_phone,
-                user=user,
-                selected_channels=channels,
-            )
-
-    async def start_qr_login(self, recreate: bool = False) -> dict:
-        async with self._qr_lock:
-            pending = self._pending_qr
-            if (
-                pending
-                and pending.status in {"pending", "password_required"}
-                and not recreate
-            ):
-                return self._serialize_qr_state(pending)
-
-            await self._clear_pending_qr()
-
-            client = self._new_client()
-            await client.connect()
-            if await client.is_user_authorized():
-                me = await client.get_me()
-                await client.disconnect()
-                return {
-                    "authorized": True,
-                    "status": "authorized",
-                    "message": "Session is already authorized.",
-                    "user": self._user_to_model(me).model_dump(),
-                    "qr_url": None,
-                    "qr_image_data_url": None,
-                    "expires_at": None,
-                    "error": None,
-                    "next_step": "You can load messages now.",
-                }
-
-            qr_login = await client.qr_login()
-            pending = PendingQrLogin(
-                client=client,
-                qr_login=qr_login,
-                created_at=datetime.now(UTC),
-                expires_at=qr_login.expires,
-            )
-            pending.wait_task = asyncio.create_task(self._wait_for_qr_login(pending))
-            self._pending_qr = pending
-            return self._serialize_qr_state(pending)
-
-    async def get_qr_login_status(self) -> dict:
-        async with self._qr_lock:
-            pending = self._pending_qr
-            if pending is None:
-                auth_status = await self.get_auth_status()
-                if auth_status.authorized:
-                    return {
-                        "authorized": True,
-                        "status": "authorized",
-                        "message": "Session is already authorized.",
-                        "user": auth_status.user.model_dump()
-                        if auth_status.user
-                        else None,
-                        "qr_url": None,
-                        "qr_image_data_url": None,
-                        "expires_at": None,
-                        "error": None,
-                        "next_step": "You can load messages now.",
-                    }
-
-                return {
-                    "authorized": False,
-                    "status": "idle",
-                    "message": "Generate a QR code to log in.",
-                    "user": None,
-                    "qr_url": None,
-                    "qr_image_data_url": None,
-                    "expires_at": None,
-                    "error": None,
-                    "next_step": "Open Telegram on another authorized device and scan the QR code.",
-                }
-
-            return self._serialize_qr_state(pending)
-
-    async def verify_qr_password(self, password: str) -> dict:
-        async with self._qr_lock:
-            pending = self._pending_qr
-            if pending is None or pending.status != "password_required":
-                raise TelegramServiceError(
-                    "QR login is not waiting for a 2FA password."
-                )
-
-            try:
-                await pending.client.sign_in(password=password)
-                me = await pending.client.get_me()
-                pending.user = self._user_to_model(me)
-                pending.status = "authorized"
-                pending.error = None
-                return self._serialize_qr_state(pending)
-            finally:
-                await self._disconnect_client(pending.client)
-
-    async def cancel_qr_login(self) -> dict:
-        async with self._qr_lock:
-            await self._clear_pending_qr()
-            return {
-                "authorized": False,
-                "status": "idle",
-                "message": "QR login cancelled.",
-                "user": None,
-                "qr_url": None,
-                "qr_image_data_url": None,
-                "expires_at": None,
-                "error": None,
-                "next_step": "Generate a fresh QR code to continue.",
-            }
-
-    async def send_code(self, phone: str | None = None) -> dict:
-        phone_value = phone or self.settings.telegram_phone
-        if not phone_value:
-            raise TelegramConfigurationError(
-                "Phone number is required. Pass it in the request body or set TELEGRAM_PHONE."
-            )
-
-        try:
-            async with self._client() as client:
-                if await client.is_user_authorized():
-                    me = await client.get_me()
-                    return {
-                        "authorized": True,
-                        "message": "Session is already authorized.",
-                        "user": self._user_to_model(me).model_dump(),
-                    }
-
-                sent_code = await client.send_code_request(phone_value)
-                delivery = self._serialize_sent_code(sent_code)
-                self._pending_codes[phone_value] = PendingCode(
-                    phone=phone_value,
-                    phone_code_hash=sent_code.phone_code_hash,
-                    requested_at=datetime.now(UTC),
-                )
-                return {
-                    "authorized": False,
-                    "phone": phone_value,
-                    "message": (
-                        "Telegram login code requested."
-                        if not delivery["delivery_type"]
-                        else f"Telegram login code requested via {delivery['delivery_type']}."
-                    ),
-                    "requested_at": self._pending_codes[
-                        phone_value
-                    ].requested_at.isoformat(),
-                    **delivery,
-                }
-        except PhoneNumberInvalidError as exc:
-            raise TelegramServiceError(
-                "Invalid phone number format for Telegram."
-            ) from exc
-        except ApiIdInvalidError as exc:
-            raise TelegramConfigurationError(
-                "Invalid TELEGRAM_API_ID or TELEGRAM_API_HASH."
-            ) from exc
-
-    async def verify_code(
-        self,
-        code: str,
-        phone: str | None = None,
-        password: str | None = None,
-    ) -> dict:
-        phone_value = phone or self.settings.telegram_phone
-        if not phone_value:
-            raise TelegramConfigurationError(
-                "Phone number is required. Pass it in the request body or set TELEGRAM_PHONE."
-            )
-
-        pending = self._pending_codes.get(phone_value)
-        if pending is None:
-            raise TelegramCodeNotRequestedError(
-                "Login code was not requested for this phone. Call /api/telegram/auth/send-code first."
-            )
-
-        async with self._client() as client:
-            try:
-                await client.sign_in(
-                    phone=phone_value,
-                    code=code,
-                    phone_code_hash=pending.phone_code_hash,
-                )
-            except SessionPasswordNeededError as exc:
-                if not password:
-                    raise TelegramPasswordRequiredError(
-                        "This account requires a 2FA password. Send it in the password field."
-                    ) from exc
-                await client.sign_in(password=password)
-            except PhoneCodeInvalidError as exc:
-                raise TelegramServiceError("Invalid Telegram login code.") from exc
-            except PhoneCodeExpiredError as exc:
-                raise TelegramServiceError(
-                    "Telegram login code expired. Request a new code."
-                ) from exc
-
-            self._pending_codes.pop(phone_value, None)
-            me = await client.get_me()
-            return {
-                "authorized": True,
-                "message": "Telegram session authorized.",
-                "user": self._user_to_model(me).model_dump(),
-            }
 
     async def parse_configured_channels(
         self,
         limit_per_channel: int = 20,
         channels: list[str] | None = None,
     ) -> ParseResponse:
-        requested_channels = channels or TARGET_CHANNELS
+        requested_channels = [
+            channel_ref.strip()
+            for channel_ref in (channels or [])
+            if channel_ref and channel_ref.strip()
+        ]
+        if not requested_channels:
+            raise TelegramServiceError("Provide at least one Telegram channel.")
+
         all_items: list[ParsedMessage] = []
         results: list[ChannelParseResult] = []
         timeout = httpx.Timeout(20.0)

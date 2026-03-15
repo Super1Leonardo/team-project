@@ -7,7 +7,10 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
-import httpx
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover - optional for test environments with fake fetchers
+    httpx = None
 from bs4 import BeautifulSoup
 
 from backend.app.collectors.base import BaseCollector
@@ -41,6 +44,8 @@ class RssCollector(BaseCollector):
         return self._parse_feed(feed_url, feed_body, limit=limit)
 
     async def _fetch(self, feed_url: str) -> str:
+        if httpx is None:
+            raise RuntimeError("httpx is required to fetch RSS sources.")
         timeout = httpx.Timeout(20.0)
         async with httpx.AsyncClient(
             timeout=timeout,
