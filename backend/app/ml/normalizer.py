@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from backend.app.core.exceptions import ExternalMLServiceError
-from backend.app.infra.db.postgres import BrandRadarPostgresStore
+from backend.app.core.exceptions import ExternalMLResponseError
+
+if TYPE_CHECKING:
+    from backend.app.infra.db.postgres import BrandRadarPostgresStore
 
 
 class MLResultNormalizer:
@@ -51,14 +53,14 @@ class MLResultNormalizer:
                     results = value
                     break
             else:
-                raise ExternalMLServiceError(
+                raise ExternalMLResponseError(
                     "External ML response must contain a list in one of: results, items, predictions, data."
                 )
         else:
-            raise ExternalMLServiceError("External ML response has unsupported format.")
+            raise ExternalMLResponseError("External ML response has unsupported format.")
 
         if not all(isinstance(item, dict) for item in results):
-            raise ExternalMLServiceError("External ML response items must be JSON objects.")
+            raise ExternalMLResponseError("External ML response items must be JSON objects.")
         return results
 
     def normalize_remote_results(
@@ -135,13 +137,13 @@ class MLResultNormalizer:
         if raw_post_id is not None:
             matched = queue_by_raw_post_id.get(int(raw_post_id))
             if matched is None:
-                raise ExternalMLServiceError(
+                raise ExternalMLResponseError(
                     f"External ML returned unknown raw_post_id={raw_post_id}."
                 )
             return matched
 
         if index >= len(queue_items):
-            raise ExternalMLServiceError(
+            raise ExternalMLResponseError(
                 "External ML returned more results than queued items and some results have no raw_post_id."
             )
         return queue_items[index]
@@ -206,7 +208,9 @@ class MLResultNormalizer:
         if "is_relevant" in payload:
             return "relevant" if bool(payload["is_relevant"]) else "irrelevant"
 
-        raise ExternalMLServiceError("External ML result is missing a valid relevance label.")
+        raise ExternalMLResponseError(
+            "External ML result is missing a valid relevance label."
+        )
 
     @staticmethod
     def _normalize_sentiment_label(payload: dict[str, Any]) -> str:
@@ -224,7 +228,7 @@ class MLResultNormalizer:
                 return [float(value) for value in embedding]
             except (TypeError, ValueError):
                 pass
-        raise ExternalMLServiceError(
+        raise ExternalMLResponseError(
             "External ML result must contain a valid embedding with 384 numeric values."
         )
 

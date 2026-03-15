@@ -207,10 +207,8 @@ class BrandRadarService:
             queue_items=items,
             remote_results=remote_results,
         )
-        result = await asyncio.to_thread(
-            self.runtime.postgres_store.persist_mentions,
+        result = await self.runtime.ml_worker.persist_mention_rows(
             mention_rows,
-            self.runtime.clickhouse_store.insert_mention_events,
         )
         return {
             **response_payload,
@@ -235,16 +233,17 @@ class BrandRadarService:
             }
             for item in payload.results
         ]
-        result = await asyncio.to_thread(
-            self.runtime.postgres_store.persist_mentions,
+        result = await self.runtime.ml_worker.persist_mention_rows(
             mention_rows,
-            self.runtime.clickhouse_store.insert_mention_events,
         )
+        message = "ML results stored and synced to ClickHouse."
+        if result["stored_count"] > 0 and result["synced_count"] < result["stored_count"]:
+            message = "ML results stored; ClickHouse sync is pending for some rows."
         return {
             "stored_count": result["stored_count"],
             "synced_count": result["synced_count"],
             "projects": {str(key): value for key, value in result["projects"].items()},
-            "message": "ML results stored and synced to ClickHouse.",
+            "message": message,
         }
 
     async def run_local_ml_once(self, limit: int = 100) -> dict[str, Any]:

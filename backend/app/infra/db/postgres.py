@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlparse
 
 import psycopg
@@ -71,6 +71,8 @@ class BrandRadarPostgresStore:
                             collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             raw_meta JSONB NOT NULL DEFAULT '{}',
                             ml_processed BOOLEAN NOT NULL DEFAULT FALSE,
+                            ml_failed_at TIMESTAMPTZ,
+                            ml_error TEXT,
                             UNIQUE (source_id, external_id)
                         )
                         """
@@ -100,8 +102,27 @@ class BrandRadarPostgresStore:
                             embedding VECTOR(384) NOT NULL,
                             dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
                             is_primary BOOLEAN NOT NULL DEFAULT TRUE,
-                            processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                            processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            clickhouse_synced_at TIMESTAMPTZ
                         )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE raw_posts
+                        ADD COLUMN IF NOT EXISTS ml_failed_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE raw_posts
+                        ADD COLUMN IF NOT EXISTS ml_error TEXT
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ADD COLUMN IF NOT EXISTS clickhouse_synced_at TIMESTAMPTZ
                         """
                     )
                     cur.execute(
@@ -124,6 +145,13 @@ class BrandRadarPostgresStore:
                     )
                     cur.execute(
                         """
+                        CREATE INDEX IF NOT EXISTS idx_raw_posts_ml_queue
+                        ON raw_posts (collected_at ASC, id ASC)
+                        WHERE ml_processed = FALSE AND ml_failed_at IS NULL
+                        """
+                    )
+                    cur.execute(
+                        """
                         CREATE INDEX IF NOT EXISTS idx_raw_posts_source_published
                         ON raw_posts (source_id, published_at DESC)
                         """
@@ -141,6 +169,13 @@ class BrandRadarPostgresStore:
                         CREATE INDEX IF NOT EXISTS idx_mentions_feed
                         ON mentions (project_id, processed_at DESC)
                         WHERE relevance_label = 'relevant' AND is_primary = TRUE
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_mentions_clickhouse_pending
+                        ON mentions (processed_at ASC, id ASC)
+                        WHERE clickhouse_synced_at IS NULL
                         """
                     )
                     cur.execute(
@@ -638,6 +673,7 @@ class BrandRadarPostgresStore:
                 JOIN sources s ON s.id = rp.source_id
                 JOIN projects p ON p.id = s.project_id
                 WHERE rp.ml_processed = FALSE
+                  AND rp.ml_failed_at IS NULL
                 ORDER BY rp.collected_at ASC, rp.id ASC
                 LIMIT %s
                 """,
@@ -733,13 +769,12 @@ class BrandRadarPostgresStore:
     def persist_mentions(
         self,
         mention_rows: list[dict[str, Any]],
-        sync_callback: Callable[[list[dict[str, Any]]], None],
     ) -> dict[str, Any]:
         if not mention_rows:
             return {
                 "stored_count": 0,
-                "synced_count": 0,
                 "projects": {},
+                "sync_rows": [],
             }
 
         raw_post_ids = [int(item["raw_post_id"]) for item in mention_rows]
@@ -820,7 +855,8 @@ class BrandRadarPostgresStore:
                         embedding = EXCLUDED.embedding,
                         dedup_group_id = EXCLUDED.dedup_group_id,
                         is_primary = EXCLUDED.is_primary,
-                        processed_at = EXCLUDED.processed_at
+                        processed_at = EXCLUDED.processed_at,
+                        clickhouse_synced_at = NULL
                     RETURNING
                         id,
                         raw_post_id,
@@ -924,12 +960,12 @@ class BrandRadarPostgresStore:
                     (group_id, group_id, group_id, group_id),
                 )
 
-            sync_callback(sync_rows)
-
             cur.execute(
                 """
                 UPDATE raw_posts
-                SET ml_processed = TRUE
+                SET ml_processed = TRUE,
+                    ml_failed_at = NULL,
+                    ml_error = NULL
                 WHERE id = ANY(%s)
                 """,
                 (raw_post_ids,),
@@ -947,9 +983,78 @@ class BrandRadarPostgresStore:
 
         return {
             "stored_count": len(mention_rows),
-            "synced_count": len(sync_rows),
             "projects": project_stats,
+            "sync_rows": sync_rows,
         }
+
+    def mark_raw_posts_ml_failed(self, failures: list[dict[str, Any]]) -> int:
+        if not failures:
+            return 0
+
+        with self._connect() as conn, conn.cursor() as cur:
+            for failure in failures:
+                cur.execute(
+                    """
+                    UPDATE raw_posts
+                    SET ml_failed_at = NOW(),
+                        ml_error = %s
+                    WHERE id = %s
+                      AND ml_processed = FALSE
+                    """,
+                    (failure["error"], int(failure["raw_post_id"])),
+                )
+
+        return len(failures)
+
+    def fetch_pending_mention_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id AS mention_id,
+                    m.project_id,
+                    s.source_type,
+                    rp.source_id,
+                    COALESCE(rp.author, '') AS author,
+                    m.relevance_score,
+                    m.relevance_label,
+                    m.sentiment_score,
+                    m.sentiment_label,
+                    CASE WHEN m.has_risk_words THEN 1 ELSE 0 END AS has_risk_words,
+                    CASE WHEN m.is_primary THEN 1 ELSE 0 END AS is_primary,
+                    rp.published_at,
+                    rp.collected_at,
+                    m.processed_at,
+                    COALESCE(m.dedup_group_id, 0) AS dedup_group_id
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                JOIN sources s ON s.id = rp.source_id
+                WHERE m.clickhouse_synced_at IS NULL
+                ORDER BY m.processed_at ASC, m.id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def mark_mentions_clickhouse_synced(self, mention_ids: list[int]) -> int:
+        if not mention_ids:
+            return 0
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE mentions
+                SET clickhouse_synced_at = NOW()
+                WHERE id = ANY(%s)
+                """,
+                (mention_ids,),
+            )
+            updated = cur.rowcount
+
+        return int(updated or 0)
 
     def list_raw_posts(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as conn, conn.cursor() as cur:
@@ -1020,7 +1125,14 @@ class BrandRadarPostgresStore:
 
     def count_unprocessed_raw_posts(self) -> int:
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) AS total FROM raw_posts WHERE ml_processed = FALSE")
+            cur.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM raw_posts
+                WHERE ml_processed = FALSE
+                  AND ml_failed_at IS NULL
+                """
+            )
             row = cur.fetchone()
 
         return int(row["total"])
