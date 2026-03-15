@@ -11,8 +11,10 @@ FROM deps AS build
 # --- RELEVANT CHANGE START ---
 # Define ARGs here so they can be passed from docker-compose
 ARG PUBLIC_BRANDRADAR_API_BASE_URL
+ARG CACHE_BUST
 # Set them as ENV so the 'bun run build' process can see them
 ENV PUBLIC_BRANDRADAR_API_BASE_URL=$PUBLIC_BRANDRADAR_API_BASE_URL
+ENV CACHE_BUST=$CACHE_BUST
 # --- RELEVANT CHANGE END ---
 
 COPY . .
