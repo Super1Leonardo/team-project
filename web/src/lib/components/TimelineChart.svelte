@@ -34,7 +34,7 @@
 					xScale={scaleBand().padding(0.25)}
 					x="date"
 					axis="x"
-					seriesLayout="group"
+					seriesLayout="stack"
 					legend
 					series={[
 						{ key: 'positive', color: chartConfig.positive.color },
@@ -43,7 +43,7 @@
 					]}
 					props={{
 						xAxis: { format: (d: string) => d.slice(5) },
-						bars: { radius: 4, stroke: 'none' }
+						bars: { stroke: 'none' }
 					}}
 				>
 					{#snippet tooltip()}
