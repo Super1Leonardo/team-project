@@ -2,8 +2,6 @@
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import Heading from '$lib/components/ui/Heading.svelte';
-	import { Input } from '$lib/components/ui/shadcn/input';
-	import { Label } from '$lib/components/ui/shadcn/label';
 	import { Button } from '$lib/components/ui/shadcn/button';
 	import WordList from '$lib/components/WordList.svelte';
 	import { Loader2 } from '@lucide/svelte';
@@ -24,8 +22,8 @@
 
 	let hasChanges = $derived(
 		keywords.join(',') !== data.project.keywords.join(',') ||
-		excludeKeywords.join(',') !== data.project.exclude_keywords.join(',') ||
-		riskWords.join(',') !== data.project.risk_words.join(',')
+			excludeKeywords.join(',') !== data.project.exclude_keywords.join(',') ||
+			riskWords.join(',') !== data.project.risk_words.join(',')
 	);
 
 	let isSubmitting = $state(false);
@@ -46,7 +44,7 @@
 
 					if (result.type === 'success') {
 						toast.success('Настройки сохранены');
-						
+
 						const actionData = (result as { data: { project?: ProjectData } }).data;
 						if (actionData?.project) {
 							keywords = [...actionData.project.keywords];

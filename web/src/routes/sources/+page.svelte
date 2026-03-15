@@ -1,22 +1,38 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import { Switch } from '$lib/components/ui/shadcn/switch';
+	import Spinner from '$lib/components/ui/shadcn/spinner/spinner.svelte';
 	import { Send, MessageCircle, Radio, Server, Database, BrainCircuit } from '@lucide/svelte';
-	import { tSourceType, tSourceStatus, tSourceError, tHealthStatus, tDbStatus, type SourceType } from '$lib/utils';
+	import {
+		tSourceType,
+		tSourceStatus,
+		tSourceError,
+		tHealthStatus,
+		tDbStatus,
+		type SourceType
+	} from '$lib/utils';
 
 	let { data } = $props();
 
+	let isSubmitting = $state(false);
+
+	const project = $derived(data.project);
 	const health = $derived(data.health);
 	const healthStatus = $derived(health?.status ?? null);
 
 	function getHealthColor(status: string | null): string {
 		if (!status) return 'bg-yellow-500';
 		switch (status) {
-			case 'healthy': return 'bg-green-500';
-			case 'degraded': return 'bg-yellow-500';
-			case 'unhealthy': return 'bg-red-500';
-			default: return 'bg-yellow-500';
+			case 'healthy':
+				return 'bg-green-500';
+			case 'degraded':
+				return 'bg-yellow-500';
+			case 'unhealthy':
+				return 'bg-red-500';
+			default:
+				return 'bg-yellow-500';
 		}
 	}
 
@@ -48,14 +64,15 @@
 	}
 
 	function getSourceDisplayConfig(source: (typeof data.sources)[0]): string {
+		const config = source.source_config as Record<string, unknown>;
 		if (source.source_type === 'telegram') {
-			return `@${source.source_config.channel}`;
+			return `@${config.channel}`;
 		}
 		if (source.source_type === 'vk') {
-			return source.source_config.domain || `ID: ${source.source_config.group_id}`;
+			return String(config.domain || `ID: ${config.group_id}`);
 		}
 		if (source.source_type === 'rss') {
-			return source.source_config.feed_url || 'Нет URL';
+			return String(config.url || config.feed_url || 'Нет URL');
 		}
 		return 'Неизвестно';
 	}
@@ -66,8 +83,15 @@
 
 	<div class="mb-4 p-3 rounded-lg border bg-card">
 		<div class="flex items-center gap-2 mb-2">
-			<span class={getHealthColor(healthStatus)} class:w-3={true} class:h-3={true} class:rounded-full={true}></span>
-			<span class="font-medium">Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span>
+			<span
+				class={getHealthColor(healthStatus)}
+				class:w-3={true}
+				class:h-3={true}
+				class:rounded-full={true}
+			></span>
+			<span class="font-medium"
+				>Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span
+			>
 		</div>
 		<div class="flex gap-4 text-sm text-muted-foreground">
 			<div class="flex items-center gap-1">
@@ -123,14 +147,36 @@
 						<form
 							method="POST"
 							action="?/toggleSource"
+							id="toggle-form-{source.id}"
 							use:enhance={() => {
-								return async ({ update }) => {
+								isSubmitting = true;
+								return async ({ result, update }) => {
+									if (result.type === 'failure') {
+										toast.error('Ошибка при обновлении источника');
+									}
 									await update();
+									isSubmitting = false;
 								};
 							}}
 						>
 							<input type="hidden" name="source_id" value={source.id} />
-							<Switch checked={source.is_active} />
+							<input type="hidden" name="project_id" value={project?.id} />
+							<input type="hidden" name="current_state" value={String(source.is_active)} />
+							<div class="flex items-center gap-2">
+								{#if isSubmitting}
+									<Spinner class="size-4" />
+								{/if}
+								<Switch
+									checked={source.is_active}
+									disabled={isSubmitting}
+									onCheckedChange={() => {
+										const form = document.getElementById(
+											'toggle-form-' + source.id
+										) as HTMLFormElement | null;
+										form?.requestSubmit();
+									}}
+								/>
+							</div>
 						</form>
 					</div>
 				{:else}

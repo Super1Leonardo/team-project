@@ -108,12 +108,12 @@ export function tSourceError(value: string): string {
 	return translations.sourceError[value as SourceError] ?? value;
 }
 
-export function tHealthStatus(value: HealthStatus): string {
-	return translations.healthStatus[value] ?? value;
+export function tHealthStatus(value: string): string {
+	return translations.healthStatus[value as HealthStatus] ?? value;
 }
 
-export function tDbStatus(value: DbStatus): string {
-	return translations.dbStatus[value] ?? value;
+export function tDbStatus(value: string): string {
+	return translations.dbStatus[value as DbStatus] ?? value;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
