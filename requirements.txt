@@ -1,7 +1,7 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 pydantic-settings==2.10.1
-psycopg[binary]==3.2.1
+psycopg[binary]>=3.2.10
 clickhouse-connect
 httpx==0.28.1
 beautifulsoup4==4.12.3
