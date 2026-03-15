@@ -5,7 +5,7 @@ import type {
 	CollectorTriggerResponse,
 	CreateProjectPayload,
 	CreateSourcePayload,
-	MLLocalRunResponse,
+	MLRunResponse,
 	MLQueueResponse,
 	MLRemotePredictResponse,
 	MLResultsPushRequest,
@@ -163,8 +163,12 @@ export function createBrandRadarClient(options: BrandRadarClientOptions = {}) {
 				method: "POST",
 				body: JSON.stringify(payload)
 			}),
+		runMl: (limit = 100) =>
+			request<MLRunResponse>("/api/ml/run", {
+				method: "POST"
+			}, { limit }),
 		runLocalMl: (limit = 100) =>
-			request<MLLocalRunResponse>("/api/ml/run", {
+			request<MLRunResponse>("/api/ml/run", {
 				method: "POST"
 			}, { limit }),
 		predictRemoteMl: (limit = 100, persist = true) =>

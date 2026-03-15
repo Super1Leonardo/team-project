@@ -228,7 +228,7 @@ class MLResultsPushResponse(BaseModel):
     message: str
 
 
-class MLLocalRunResponse(BaseModel):
+class MLRunResponse(BaseModel):
     batch_size: int
     stored_count: int
     synced_count: int

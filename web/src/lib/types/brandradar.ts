@@ -166,7 +166,7 @@ export interface MLResultsPushResponse {
 	message: string;
 }
 
-export interface MLLocalRunResponse {
+export interface MLRunResponse {
 	batch_size: number;
 	stored_count: number;
 	synced_count: number;

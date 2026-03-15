@@ -5,7 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from backend.app.core.exceptions import ExternalMLServiceError, ResourceNotFoundError
+from backend.app.core.exceptions import ResourceNotFoundError
 from backend.app.runtime import ArchitectureRuntime
 
 logger = logging.getLogger(__name__)
@@ -119,32 +119,6 @@ class BrandRadarService:
             "sources_triggered": len(sources),
         }
 
-    async def run_collector_once(
-        self,
-        *,
-        project_id: int | None = None,
-        source_ids: list[int] | None = None,
-        limit_per_source: int | None = None,
-    ) -> dict[str, Any]:
-        if project_id is not None:
-            await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
-
-        sources = await asyncio.to_thread(
-            self.runtime.postgres_store.list_sources,
-            project_id=project_id,
-            active_only=True,
-        )
-        source_id_set = set(source_ids or [])
-        if source_id_set:
-            sources = [source for source in sources if int(source["id"]) in source_id_set]
-            if not sources:
-                raise ResourceNotFoundError("No matching active sources were found.")
-
-        return await self.runtime.collector_worker.run_sources(
-            sources,
-            per_source_limit=limit_per_source,
-        )
-
     async def get_collector_status(self, project_id: int | None = None) -> dict[str, Any]:
         if project_id is not None:
             await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
@@ -182,30 +156,11 @@ class BrandRadarService:
         }
 
     async def get_ml_queue(self, limit: int = 100) -> dict[str, Any]:
-        rows = await asyncio.to_thread(
+        raw_posts = await asyncio.to_thread(
             self.runtime.postgres_store.fetch_unprocessed_raw_posts,
             limit,
         )
-        items = [
-            {
-                "raw_post_id": int(row["id"]),
-                "source_id": int(row["source_id"]),
-                "project_id": int(row["project_id"]),
-                "source_type": row["source_type"],
-                "external_id": row["external_id"],
-                "url": row["url"],
-                "title": row["title"],
-                "text": row["text"],
-                "author": row["author"],
-                "published_at": row["published_at"],
-                "collected_at": row["collected_at"],
-                "raw_meta": row["raw_meta"],
-                "keywords": row["keywords"],
-                "exclude_keywords": row["exclude_keywords"],
-                "risk_words": row["risk_words"],
-            }
-            for row in rows
-        ]
+        items = self.runtime.ml_normalizer.build_queue_items(raw_posts)
         return {"count": len(items), "items": items}
 
     async def predict_with_remote_ml(
@@ -229,7 +184,7 @@ class BrandRadarService:
             }
 
         remote_response = await self.runtime.external_ml_gateway.predict(items)
-        remote_results = self._extract_remote_results(remote_response)
+        remote_results = self.runtime.ml_normalizer.extract_remote_results(remote_response)
 
         response_payload = {
             "queued_count": len(items),
@@ -248,7 +203,7 @@ class BrandRadarService:
             }
 
         mention_rows = await asyncio.to_thread(
-            self._normalize_remote_results,
+            self.runtime.ml_normalizer.normalize_remote_results,
             queue_items=items,
             remote_results=remote_results,
         )
@@ -293,7 +248,7 @@ class BrandRadarService:
         }
 
     async def run_local_ml_once(self, limit: int = 100) -> dict[str, Any]:
-        result = await asyncio.to_thread(self.runtime.ml_pipeline.process_batch, limit)
+        result = await self.runtime.ml_worker.run_once(batch_size=limit)
         return {
             **result,
             "projects": {str(key): value for key, value in result["projects"].items()},
@@ -358,198 +313,3 @@ class BrandRadarService:
             task.result()
         except Exception:
             logger.exception("Background collector task failed.")
-
-    def _extract_remote_results(self, remote_response: Any) -> list[dict[str, Any]]:
-        if isinstance(remote_response, list):
-            results = remote_response
-        elif isinstance(remote_response, dict):
-            for key in ("results", "items", "predictions", "data"):
-                value = remote_response.get(key)
-                if isinstance(value, list):
-                    results = value
-                    break
-            else:
-                raise ExternalMLServiceError(
-                    "External ML response must contain a list in one of: results, items, predictions, data."
-                )
-        else:
-            raise ExternalMLServiceError("External ML response has unsupported format.")
-
-        if not all(isinstance(item, dict) for item in results):
-            raise ExternalMLServiceError("External ML response items must be JSON objects.")
-        return results
-
-    def _normalize_remote_results(
-        self,
-        *,
-        queue_items: list[dict[str, Any]],
-        remote_results: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        queue_by_raw_post_id = {int(item["raw_post_id"]): item for item in queue_items}
-        normalized_rows: list[dict[str, Any]] = []
-
-        for index, result in enumerate(remote_results):
-            queue_item = self._resolve_queue_item(
-                queue_items=queue_items,
-                queue_by_raw_post_id=queue_by_raw_post_id,
-                remote_item=result,
-                index=index,
-            )
-
-            relevance_label = self._normalize_relevance_label(result, queue_item)
-            relevance_score = self._normalize_float(
-                result,
-                keys=("relevance_score", "score", "relevance_probability"),
-                default=1.0 if relevance_label == "relevant" else 0.0,
-            )
-            sentiment_label = self._normalize_sentiment_label(result)
-            sentiment_score = self._normalize_float(
-                result,
-                keys=("sentiment_score", "sentiment_value", "polarity"),
-                default=0.0,
-            )
-            has_risk_words = bool(
-                result.get(
-                    "has_risk_words",
-                    self._contains_any(queue_item["text"], queue_item["risk_words"]),
-                )
-            )
-            embedding = self._normalize_embedding(result.get("embedding"), queue_item["text"])
-
-            dedup_group_id = result.get("dedup_group_id")
-            is_primary_value = result.get("is_primary")
-            if is_primary_value is None:
-                dedup = (
-                    self.runtime.ml_pipeline.deduplicator.assign(
-                        int(queue_item["project_id"]),
-                        embedding,
-                    )
-                    if relevance_label == "relevant"
-                    else None
-                )
-                dedup_group_id = (
-                    dedup_group_id
-                    if dedup_group_id is not None
-                    else (dedup.dedup_group_id if dedup else None)
-                )
-                is_primary = dedup.is_primary if dedup else True
-            else:
-                is_primary = bool(is_primary_value)
-
-            normalized_rows.append(
-                {
-                    "raw_post_id": int(queue_item["raw_post_id"]),
-                    "project_id": int(queue_item["project_id"]),
-                    "relevance_score": relevance_score,
-                    "relevance_label": relevance_label,
-                    "sentiment_score": sentiment_score,
-                    "sentiment_label": sentiment_label,
-                    "has_risk_words": has_risk_words,
-                    "embedding": embedding,
-                    "dedup_group_id": int(dedup_group_id) if dedup_group_id is not None else None,
-                    "is_primary": is_primary,
-                    "processed_at": self._parse_datetime(result.get("processed_at")),
-                }
-            )
-
-        return normalized_rows
-
-    @staticmethod
-    def _resolve_queue_item(
-        *,
-        queue_items: list[dict[str, Any]],
-        queue_by_raw_post_id: dict[int, dict[str, Any]],
-        remote_item: dict[str, Any],
-        index: int,
-    ) -> dict[str, Any]:
-        raw_post_id = remote_item.get("raw_post_id")
-        if raw_post_id is not None:
-            matched = queue_by_raw_post_id.get(int(raw_post_id))
-            if matched is None:
-                raise ExternalMLServiceError(
-                    f"External ML returned unknown raw_post_id={raw_post_id}."
-                )
-            return matched
-
-        if index >= len(queue_items):
-            raise ExternalMLServiceError(
-                "External ML returned more results than queued items and some results have no raw_post_id."
-            )
-        return queue_items[index]
-
-    @staticmethod
-    def _normalize_float(
-        payload: dict[str, Any],
-        *,
-        keys: tuple[str, ...],
-        default: float,
-    ) -> float:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                continue
-        return float(default)
-
-    @staticmethod
-    def _normalize_relevance_label(
-        payload: dict[str, Any],
-        queue_item: dict[str, Any],
-    ) -> str:
-        raw_value = payload.get("relevance_label", payload.get("relevance"))
-        if isinstance(raw_value, bool):
-            return "relevant" if raw_value else "irrelevant"
-        if isinstance(raw_value, str):
-            normalized = raw_value.strip().casefold()
-            if normalized in {"relevant", "relevance", "true", "1", "yes"}:
-                return "relevant"
-            if normalized in {"irrelevant", "false", "0", "no"}:
-                return "irrelevant"
-
-        if "is_relevant" in payload:
-            return "relevant" if bool(payload["is_relevant"]) else "irrelevant"
-
-        normalized_text = " ".join(queue_item["text"].casefold().split())
-        if any(" ".join(word.casefold().split()) in normalized_text for word in queue_item["keywords"]):
-            return "relevant"
-        return "irrelevant"
-
-    @staticmethod
-    def _normalize_sentiment_label(payload: dict[str, Any]) -> str:
-        raw_value = payload.get("sentiment_label", payload.get("sentiment"))
-        if isinstance(raw_value, str):
-            normalized = raw_value.strip().casefold()
-            if normalized in {"positive", "neutral", "negative"}:
-                return normalized
-        return "neutral"
-
-    def _normalize_embedding(
-        self,
-        embedding: Any,
-        text: str,
-    ) -> list[float]:
-        if isinstance(embedding, list) and len(embedding) == 384:
-            try:
-                return [float(value) for value in embedding]
-            except (TypeError, ValueError):
-                pass
-        return self.runtime.ml_pipeline.embeddings.encode(text)
-
-    @staticmethod
-    def _parse_datetime(value: Any) -> datetime | None:
-        if value is None or isinstance(value, datetime):
-            return value
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-        return None
-
-    @staticmethod
-    def _contains_any(text: str, words: list[str]) -> bool:
-        normalized = " ".join(text.casefold().split())
-        return any(" ".join(word.casefold().split()) in normalized for word in words)

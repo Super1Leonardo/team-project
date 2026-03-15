@@ -8,7 +8,7 @@ from backend.app.modules.brandradar.schemas import (
     CollectorSourceStatus,
     CollectorStatusResponse,
     CollectorTriggerResponse,
-    MLLocalRunResponse,
+    MLRunResponse,
     MLQueueResponse,
     MLRemotePredictResponse,
     MLResultsPushRequest,
@@ -201,8 +201,8 @@ async def push_ml_results(
     return _envelope(await service.submit_ml_results(payload))
 
 
-@router.post("/ml/run", response_model=ApiEnvelope[MLLocalRunResponse])
-async def run_local_ml(
+@router.post("/ml/run", response_model=ApiEnvelope[MLRunResponse])
+async def run_ml(
     limit: int = Query(default=100, ge=1, le=500),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
