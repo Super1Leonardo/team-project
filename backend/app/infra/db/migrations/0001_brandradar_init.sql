@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS raw_posts (
     collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     raw_meta JSONB NOT NULL DEFAULT '{}',
     ml_processed BOOLEAN NOT NULL DEFAULT FALSE,
+    ml_failed_at TIMESTAMPTZ,
+    ml_error TEXT,
     UNIQUE (source_id, external_id)
 );
 
@@ -58,7 +60,8 @@ CREATE TABLE IF NOT EXISTS mentions (
     embedding VECTOR(384) NOT NULL,
     dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
     is_primary BOOLEAN NOT NULL DEFAULT TRUE,
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    clickhouse_synced_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -73,6 +76,10 @@ CREATE INDEX IF NOT EXISTS idx_raw_posts_unprocessed
 ON raw_posts (ml_processed)
 WHERE NOT ml_processed;
 
+CREATE INDEX IF NOT EXISTS idx_raw_posts_ml_queue
+ON raw_posts (collected_at ASC, id ASC)
+WHERE ml_processed = FALSE AND ml_failed_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_raw_posts_source_published
 ON raw_posts (source_id, published_at DESC);
 
@@ -84,6 +91,10 @@ WITH (lists = 100);
 CREATE INDEX IF NOT EXISTS idx_mentions_feed
 ON mentions (project_id, processed_at DESC)
 WHERE relevance_label = 'relevant' AND is_primary = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_mentions_clickhouse_pending
+ON mentions (processed_at ASC, id ASC)
+WHERE clickhouse_synced_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_events_lookup
 ON events (project_id, created_at DESC);

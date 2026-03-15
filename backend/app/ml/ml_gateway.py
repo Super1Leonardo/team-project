@@ -7,7 +7,7 @@ import httpx
 from fastapi.encoders import jsonable_encoder
 
 from backend.app.core.config import Settings
-from backend.app.core.exceptions import ExternalMLServiceError
+from backend.app.core.exceptions import ExternalMLRequestError, ExternalMLResponseError
 
 
 class ExternalMLGateway:
@@ -30,19 +30,20 @@ class ExternalMLGateway:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(self.predict_url, json=payload)
         except httpx.HTTPError as exc:
-            raise ExternalMLServiceError(
+            raise ExternalMLRequestError(
                 f"External ML request to {self.predict_url} failed: {exc}"
             ) from exc
 
         if response.status_code >= 400:
             detail = response.text.strip() or response.reason_phrase
-            raise ExternalMLServiceError(
-                f"External ML service returned {response.status_code}: {detail}"
+            raise ExternalMLRequestError(
+                f"External ML service returned {response.status_code}: {detail}",
+                status_code=response.status_code,
             )
 
         try:
             return response.json()
         except ValueError as exc:
-            raise ExternalMLServiceError(
+            raise ExternalMLResponseError(
                 "External ML service returned a non-JSON response."
             ) from exc

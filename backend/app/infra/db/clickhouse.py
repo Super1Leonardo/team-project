@@ -362,7 +362,7 @@ class ClickHouseMentionEventsStore:
                             processed_at DateTime,
                             dedup_group_id UInt64
                         )
-                        ENGINE = MergeTree()
+                        ENGINE = ReplacingMergeTree(processed_at)
                         PARTITION BY toYYYYMM(published_at)
                         ORDER BY (project_id, published_at, mention_id)
                         """
