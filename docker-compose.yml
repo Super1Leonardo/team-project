@@ -31,7 +31,7 @@ services:
       - ./web:/app
       - web_node_modules:/app/node_modules
       - bun_cache:/root/.bun/install/cache
-    command: sh -c "bun install --frozen-lockfile && bun run test:e2e"
+    command: sh -c "bun install && bun run test:e2e"
 
   python:
     profiles: ["python"]
