@@ -5,6 +5,8 @@ services:
       context: ./web
       dockerfile: Dockerfile
       target: runner
+      args:
+        - PUBLIC_BRANDRADAR_API_BASE_URL=${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
     ports:
       - "80:3000"
       - "443:3000"
