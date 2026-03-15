@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Article from '$lib/components/Article.svelte';
 
 	// Типы данных (взяты из твоего +page.svelte)
@@ -30,7 +31,12 @@
 		<div
 			class="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
 		>
-			Нет упоминаний по заданным фильтрам
+			<div>
+				Нет упоминаний по
+				<a href={resolve('/analytics')} class="underline text-accent-foreground">
+					заданным фильтрам
+				</a>
+			</div>
 		</div>
 	{:else}
 		{#each clusters as clusterData (clusterData.id)}
