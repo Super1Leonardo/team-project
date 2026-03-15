@@ -1085,10 +1085,44 @@ class BrandRadarPostgresStore:
 
         return [dict(row) for row in rows]
 
-    def list_mentions(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    def list_mentions(
+        self,
+        project_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+    ) -> dict[str, Any]:
+        conditions = ["m.project_id = %s"]
+        params: list[Any] = [project_id]
+
+        if confidence_threshold is not None:
+            conditions.append("m.relevance_score >= %s")
+            params.append(confidence_threshold)
+
+        if published_after is not None:
+            conditions.append("rp.published_at >= %s")
+            params.append(published_after)
+
+        where_clause = " AND ".join(conditions)
+        offset = (page - 1) * page_size
+
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
+                SELECT COUNT(*) AS total
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                JOIN sources s ON s.id = rp.source_id
+                WHERE {where_clause}
+                """,
+                params,
+            )
+            total_row = cur.fetchone()
+
+            cur.execute(
+                f"""
                 SELECT
                     m.id,
                     m.raw_post_id,
@@ -1113,15 +1147,19 @@ class BrandRadarPostgresStore:
                 FROM mentions m
                 JOIN raw_posts rp ON rp.id = m.raw_post_id
                 JOIN sources s ON s.id = rp.source_id
-                WHERE m.project_id = %s
+                WHERE {where_clause}
                 ORDER BY m.processed_at DESC, m.id DESC
                 LIMIT %s
+                OFFSET %s
                 """,
-                (project_id, limit),
+                [*params, page_size, offset],
             )
             rows = cur.fetchall()
 
-        return [dict(row) for row in rows]
+        return {
+            "items": [dict(row) for row in rows],
+            "total": int(total_row["total"]) if total_row is not None else 0,
+        }
 
     def count_unprocessed_raw_posts(self) -> int:
         with self._connect() as conn, conn.cursor() as cur:

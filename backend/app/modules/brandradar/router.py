@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 
 from backend.app.api.dependencies import get_brandradar_service
@@ -15,6 +16,8 @@ from backend.app.modules.brandradar.schemas import (
     MLResultsPushRequest,
     MLResultsPushResponse,
     MentionResponse,
+    MentionConfidenceThreshold,
+    MentionPeriod,
     ProjectCreateRequest,
     ProjectResponse,
     ProjectUpdateRequest,
@@ -474,13 +477,27 @@ async def list_raw_posts(
 )
 async def list_mentions(
     project_id: int,
-    limit: int = Query(default=100, ge=1, le=500),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    confidence: MentionConfidenceThreshold | None = Query(default=None),
+    period: MentionPeriod | None = Query(default=None),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
-    mentions = await service.list_mentions(project_id, limit=limit)
-    if not mentions:
-        mentions = _get_mock_mentions(project_id, limit=limit)
-    return _envelope(mentions, total=len(mentions), page=1, page_size=limit)
+    effective_page_size = page_size or limit or 100
+    mentions_page = await service.list_mentions(
+        project_id,
+        page=page,
+        page_size=effective_page_size,
+        confidence_threshold=confidence.threshold if confidence else None,
+        published_after=(datetime.now(UTC) - period.delta) if period else None,
+    )
+    return _envelope(
+        mentions_page["items"],
+        total=mentions_page["total"],
+        page=page,
+        page_size=effective_page_size,
+    )
 
 
 @router.get("/health", response_model=BrandRadarHealthResponse)

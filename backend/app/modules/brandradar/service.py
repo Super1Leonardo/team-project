@@ -261,12 +261,23 @@ class BrandRadarService:
             limit,
         )
 
-    async def list_mentions(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_mentions(
+        self,
+        project_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+    ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
             self.runtime.postgres_store.list_mentions,
             project_id,
-            limit,
+            page=page,
+            page_size=page_size,
+            confidence_threshold=confidence_threshold,
+            published_after=published_after,
         )
 
     async def get_health(self) -> dict[str, Any]:
