@@ -12,6 +12,9 @@
 	let minMlScore = $derived(parseFloat(minMlScoreStr));
 
 	let chartData = $derived(data.timeline.filter((day: any) => day.mlConfidence >= minMlScore));
+
+	let hasNoTimelineData = $derived(data.timeline.length === 0);
+	let hasNoFilteredData = $derived(chartData.length === 0 && data.timeline.length > 0);
 </script>
 
 <div
@@ -45,6 +48,11 @@
 		</Select.Root>
 	</div>
 
+{#if hasNoTimelineData}
+	<div class="text-center text-muted-foreground py-8">
+		Нет данных для отображения
+	</div>
+{:else}
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 		<Card.Root>
 			<Card.Header class="pb-2">
@@ -79,5 +87,12 @@
 		</Card.Root>
 	</div>
 
-	<TimelineChart {chartData} {minMlScoreStr} />
+	{#if hasNoFilteredData}
+		<div class="text-center text-muted-foreground py-8">
+			Нет статистики по выбранным фильтрам
+		</div>
+	{:else}
+		<TimelineChart {chartData} {minMlScoreStr} />
+	{/if}
+{/if}
 </div>
