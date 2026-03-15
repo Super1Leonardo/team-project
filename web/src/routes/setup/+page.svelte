@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { beforeNavigate } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import { Button } from '$lib/components/ui/shadcn/button';
@@ -29,6 +31,14 @@
 	);
 
 	let isSubmitting = $state(false);
+
+	beforeNavigate((navigation) => {
+		if (hasChanges) {
+			if (!confirm('У вас есть несохранённые изменения. Всё равно уйти?')) {
+				navigation.cancel();
+			}
+		}
+	});
 </script>
 
 <div class="container mx-auto max-w-3xl py-4">
