@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
       target: runner
       args:
-        - PUBLIC_BRANDRADAR_API_BASE_URL=${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
+        - PUBLIC_BRANDRADAR_API_BASE_URL=${PUBLIC_BRANDRADAR_API_BASE_URL:-http://python:8000}
         - CACHE_BUST=${CACHE_BUST:-}
     ports:
       - "80:3000"
@@ -15,7 +15,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
-      PUBLIC_BRANDRADAR_API_BASE_URL: ${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
+      PUBLIC_BRANDRADAR_API_BASE_URL: ${PUBLIC_BRANDRADAR_API_BASE_URL:-http://python:8000}
 
   e2e:
     profiles: ["e2e"]
@@ -33,7 +33,7 @@ services:
     command: sh -c "bun install && bun run test:e2e"
 
   python:
-    profiles: ["python"]
+    profiles: ["python", "prod"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,14 +65,14 @@ services:
       ML_WORKER_BATCH_SIZE: ${ML_WORKER_BATCH_SIZE:-100}
       ML_WORKER_IDLE_SLEEP_SECONDS: ${ML_WORKER_IDLE_SLEEP_SECONDS:-15}
       ML_DEDUP_THRESHOLD: ${ML_DEDUP_THRESHOLD:-0.15}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://web:3000,http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - .:/app
       - pip_cache:/root/.cache/pip
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 
   postgres:
-    profiles: ["python"]
+    profiles: ["python", "prod"]
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-brandradar}
@@ -89,7 +89,7 @@ services:
       retries: 10
 
   clickhouse:
-    profiles: ["python"]
+    profiles: ["python", "prod"]
     image: clickhouse/clickhouse-server:25.8
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-brandradar_ml}
