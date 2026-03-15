@@ -87,4 +87,9 @@ def get_brandradar_service() -> BrandRadarService:
 
 @lru_cache
 def get_health_service() -> HealthService:
-    return HealthService()
+    return HealthService(
+        settings=get_app_settings(),
+        postgres_store=get_brandradar_postgres_store(),
+        raw_messages_store=get_messages_repository(),
+        mention_events_store=get_brandradar_clickhouse_store(),
+    )
