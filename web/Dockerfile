@@ -25,7 +25,7 @@ RUN bun run build
 FROM oven/bun:1 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN mkdir -p node_modules && bun install --frozen-lockfile --production --ignore-scripts
+RUN mkdir -p node_modules && bun install --production --ignore-scripts
 
 # 4. Playwright stage for E2E testing (optional/separate)
 FROM mcr.microsoft.com/playwright:v1.58.2-noble AS playwright
