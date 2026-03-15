@@ -2,17 +2,9 @@
 	import * as Card from '$lib/components/ui/shadcn/card';
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import Heading from '$lib/components/ui/Heading.svelte';
-	import * as Chart from '$lib/components/ui/shadcn/chart/index.js';
-	import { scaleBand } from 'd3-scale';
-	import { BarChart } from 'layerchart';
+	import TimelineChart from '$lib/components/TimelineChart.svelte';
 
 	let { data } = $props();
-
-	const chartConfig = {
-		positive: { label: 'Позитив', color: 'var(--chart-2)' },
-		neutral: { label: 'Нейтрально', color: 'var(--color-muted-foreground)' },
-		negative: { label: 'Негатив', color: 'var(--color-destructive)' }
-	} satisfies Chart.ChartConfig;
 
 	let timeframe = $state('7d');
 	let minMlScoreStr = $state('0.7');
@@ -65,7 +57,7 @@
 		</Card.Root>
 
 		<Card.Root>
-			<Card.Header class="pb-2">
+			<Card.Header class="pb-6">
 				<Card.Title class="text-sm font-medium text-muted-foreground">Spike-алерты</Card.Title>
 			</Card.Header>
 			<Card.Content>
@@ -75,7 +67,7 @@
 		</Card.Root>
 
 		<Card.Root>
-			<Card.Header class="pb-2">
+			<Card.Header class="pb-6">
 				<Card.Title class="text-sm font-medium text-muted-foreground">Средний ML Score</Card.Title>
 			</Card.Header>
 			<Card.Content>
@@ -85,39 +77,5 @@
 		</Card.Root>
 	</div>
 
-	<Card.Root class="col-span-3">
-		<Card.Header>
-			<Card.Title>Динамика тональности</Card.Title>
-			<Card.Description>
-				Распределение упоминаний по дням. Данные с ML Score &ge; {minMlScoreStr}
-			</Card.Description>
-		</Card.Header>
-		<Card.Content>
-			<div class="h-87.5 w-full">
-				<Chart.Container config={chartConfig} class="h-full w-full">
-					<BarChart
-						data={chartData}
-						xScale={scaleBand().padding(0.25)}
-						x="date"
-						axis="x"
-						seriesLayout="group"
-						legend
-						series={[
-							{ key: 'positive', color: chartConfig.positive.color },
-							{ key: 'neutral', color: chartConfig.neutral.color },
-							{ key: 'negative', color: chartConfig.negative.color }
-						]}
-						props={{
-							xAxis: { format: (d: string) => d.slice(5) },
-							bars: { radius: 4, stroke: 'none' }
-						}}
-					>
-						{#snippet tooltip()}
-							<Chart.Tooltip />
-						{/snippet}
-					</BarChart>
-				</Chart.Container>
-			</div>
-		</Card.Content>
-	</Card.Root>
+	<TimelineChart {chartData} {minMlScoreStr} />
 </div>
