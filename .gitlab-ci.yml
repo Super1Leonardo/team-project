@@ -67,7 +67,7 @@ deploy_production:
   extends: .deploy_template
   variables:
     DEPLOY_TARGET_DIR: "${DEPLOY_BASE_PATH}/production"
-    REMOTE_APP_UP_CMD: docker compose --profile python --profile prod up -d --build --remove-orphans
+    REMOTE_APP_UP_CMD: docker compose --profile python --profile prod build --build-arg CACHE_BUST=$CI_COMMIT_SHORT_SHA && docker compose --profile python --profile prod up -d --remove-orphans
   environment:
     name: production
   rules:

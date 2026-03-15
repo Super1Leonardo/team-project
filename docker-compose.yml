@@ -1,25 +1,16 @@
 services:
   web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-      target: runner
-    ports:
-      - "80:3000"
-      - "443:3000"
-    environment:
-      HOST: 0.0.0.0
-      PORT: 3000
-      ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
-      PUBLIC_BRANDRADAR_API_BASE_URL: ${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
-
-  web-prod:
     profiles: ["prod"]
     build:
       context: ./web
       dockerfile: Dockerfile
       target: runner
+      args:
+        - PUBLIC_BRANDRADAR_API_BASE_URL=${PUBLIC_BRANDRADAR_API_BASE_URL:-http://localhost:8000}
+        - CACHE_BUST=${CACHE_BUST:-}
     ports:
+      - "80:3000"
+      - "443:3000"
       - "${WEB_PROD_PORT:-3000}:3000"
     environment:
       HOST: 0.0.0.0
