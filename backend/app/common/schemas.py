@@ -69,12 +69,25 @@ class TelegramChannelsResponse(BaseModel):
     message: str
 
 
+class RssFeedsSelectionRequest(BaseModel):
+    feeds: list[str] = Field(default_factory=list)
+
+
+class RssFeedsResponse(BaseModel):
+    selected_source: ParserSource
+    available_feeds: list[str]
+    selected_feeds: list[str]
+    message: str
+
+
 class AppConfigResponse(BaseModel):
     api_title: str
     api_version: str
     selected_source: ParserSource
     selected_channels: list[str]
     available_channels: list[str]
+    selected_rss_feeds: list[str] = Field(default_factory=list)
+    available_rss_feeds: list[str] = Field(default_factory=list)
     available_sources: list[SourceOption]
     auth_methods: AuthMethodsResponse
     docs_url: str

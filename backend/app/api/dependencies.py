@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from backend.app.collectors.rss import RssCollector
 from backend.app.core.config import Settings, get_settings
 from backend.app.infra.db.clickhouse import ClickHouseMentionEventsStore
 from backend.app.infra.db.postgres import BrandRadarPostgresStore
@@ -57,6 +58,11 @@ def get_telegram_gateway() -> TelegramGateway:
 
 
 @lru_cache
+def get_rss_collector() -> RssCollector:
+    return RssCollector()
+
+
+@lru_cache
 def get_sources_service() -> SourcesService:
     return SourcesService(get_sources_repository(), get_app_settings())
 
@@ -75,6 +81,7 @@ def get_ml_service() -> MLService:
 def get_collector_service() -> CollectorService:
     return CollectorService(
         get_telegram_gateway(),
+        get_rss_collector(),
         get_sources_repository(),
         get_messages_repository(),
     )

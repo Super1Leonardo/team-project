@@ -4,6 +4,8 @@ from backend.app.modules.sources.repository import ParserSettingsRepository
 from backend.app.modules.sources.schemas import (
     AppConfigResponse,
     AuthMethodsResponse,
+    RssFeedsResponse,
+    RssFeedsSelectionRequest,
     SourceSelectionRequest,
     SourceSelectionResponse,
     TelegramChannelsResponse,
@@ -23,6 +25,8 @@ class SourcesService:
             selected_source=self.repository.selected_source,
             selected_channels=self.repository.selected_telegram_channels,
             available_channels=self.repository.available_telegram_channels,
+            selected_rss_feeds=self.repository.selected_rss_feeds,
+            available_rss_feeds=self.repository.available_rss_feeds,
             available_sources=self.repository.get_source_selection()["sources"],
             auth_methods=AuthMethodsResponse(code=False, qr=False),
             docs_url="/docs",
@@ -57,6 +61,22 @@ class SourcesService:
         try:
             return TelegramChannelsResponse.model_validate(
                 self.repository.set_telegram_channels(payload.channels)
+            )
+        except ValueError as exc:
+            raise DomainValidationError(str(exc)) from exc
+
+    def get_rss_feeds(self) -> RssFeedsResponse:
+        return RssFeedsResponse.model_validate(
+            self.repository.get_rss_feeds()
+        )
+
+    def set_rss_feeds(
+        self,
+        payload: RssFeedsSelectionRequest,
+    ) -> RssFeedsResponse:
+        try:
+            return RssFeedsResponse.model_validate(
+                self.repository.set_rss_feeds(payload.feeds)
             )
         except ValueError as exc:
             raise DomainValidationError(str(exc)) from exc

@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends
 from backend.app.api.dependencies import get_sources_service
 from backend.app.modules.sources.schemas import (
     AppConfigResponse,
+    RssFeedsResponse,
+    RssFeedsSelectionRequest,
     SourceSelectionRequest,
     SourceSelectionResponse,
     TelegramChannelsResponse,
@@ -47,3 +49,16 @@ async def set_telegram_channels(
     service: SourcesService = Depends(get_sources_service),
 ):
     return service.set_telegram_channels(payload)
+
+
+@router.get("/parser/rss/feeds", response_model=RssFeedsResponse)
+async def get_rss_feeds(service: SourcesService = Depends(get_sources_service)):
+    return service.get_rss_feeds()
+
+
+@router.post("/parser/rss/feeds", response_model=RssFeedsResponse)
+async def set_rss_feeds(
+    payload: RssFeedsSelectionRequest,
+    service: SourcesService = Depends(get_sources_service),
+):
+    return service.set_rss_feeds(payload)
