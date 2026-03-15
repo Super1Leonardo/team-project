@@ -52,6 +52,7 @@
 	}
 
 	function getSourceStatus(source: (typeof data.sources)[0]): 'ok' | 'error' | 'stale' {
+		if (!source.is_active) return 'stale';
 		if (source.last_error) return 'error';
 		if (!source.last_collected_at) return 'stale';
 
