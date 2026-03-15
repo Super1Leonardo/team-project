@@ -4,6 +4,7 @@ import time
 from datetime import UTC, datetime
 from datetime import timedelta
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import psycopg
 from psycopg.rows import dict_row
@@ -307,6 +308,7 @@ class BrandRadarPostgresStore:
             raise DomainValidationError(
                 f"Unsupported source_type '{source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
             )
+        normalized_source_config = self._normalize_source_config(source_type, source_config)
 
         self._ensure_project_exists(project_id)
 
@@ -335,7 +337,7 @@ class BrandRadarPostgresStore:
                 (
                     project_id,
                     source_type,
-                    Jsonb(source_config),
+                    Jsonb(normalized_source_config),
                     is_active,
                     poll_interval_s,
                 ),
@@ -443,6 +445,11 @@ class BrandRadarPostgresStore:
             raise DomainValidationError(
                 f"Unsupported source_type '{next_source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
             )
+        next_source_config = source_config if source_config is not None else source["source_config"]
+        normalized_source_config = self._normalize_source_config(
+            next_source_type,
+            next_source_config,
+        )
 
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
@@ -458,7 +465,7 @@ class BrandRadarPostgresStore:
                 """,
                 (
                     next_source_type,
-                    Jsonb(source_config if source_config is not None else source["source_config"]),
+                    Jsonb(normalized_source_config),
                     is_active if is_active is not None else source["is_active"],
                     poll_interval_s
                     if poll_interval_s is not None
@@ -554,29 +561,14 @@ class BrandRadarPostgresStore:
                     """,
                     (
                         source["id"],
-                        str(post.id),
+                        self._raw_post_external_id(post),
                         post.url,
-                        None,
+                        self._raw_post_title(post),
                         post.text or "",
-                        post.post_author or post.source.username or post.source.title,
+                        self._raw_post_author(post),
                         post.date,
                         collected_at,
-                        Jsonb(
-                            {
-                                "message_uid": post.message_uid,
-                                "channel_id": post.source.channel_id,
-                                "channel_title": post.source.title,
-                                "channel_username": post.source.username,
-                                "requested_as": post.source.requested_as,
-                                "views": post.views,
-                                "forwards": post.forwards,
-                                "like_count": post.like_count,
-                                "dislike_count": post.dislike_count,
-                                "reactions": [
-                                    reaction.model_dump() for reaction in post.reactions
-                                ],
-                            }
-                        ),
+                        Jsonb(self._build_raw_post_meta(post)),
                     ),
                 )
                 inserted = cur.fetchone()
@@ -1032,6 +1024,69 @@ class BrandRadarPostgresStore:
             row = cur.fetchone()
 
         return int(row["total"])
+
+    @staticmethod
+    def _normalize_source_config(
+        source_type: str,
+        source_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(source_config, dict):
+            raise DomainValidationError("source_config must be a JSON object.")
+
+        normalized_source_config = dict(source_config)
+        if source_type != "rss":
+            return normalized_source_config
+
+        url = normalized_source_config.get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise DomainValidationError("RSS source_config.url is required.")
+
+        normalized_url = url.strip()
+        parsed = urlparse(normalized_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise DomainValidationError("RSS source_config.url must be a valid http(s) URL.")
+
+        normalized_source_config["url"] = normalized_url
+        return normalized_source_config
+
+    @staticmethod
+    def _raw_post_external_id(post: ParsedMessage) -> str:
+        external_id = post.meta.get("external_id") if post.meta else None
+        if isinstance(external_id, str) and external_id.strip():
+            return external_id.strip()
+        return str(post.id)
+
+    @staticmethod
+    def _raw_post_title(post: ParsedMessage) -> str | None:
+        if isinstance(post.title, str):
+            title = post.title.strip()
+            if title:
+                return title
+        return None
+
+    @staticmethod
+    def _raw_post_author(post: ParsedMessage) -> str | None:
+        return post.post_author or post.source.username or post.source.title
+
+    @staticmethod
+    def _build_raw_post_meta(post: ParsedMessage) -> dict[str, Any]:
+        payload = {
+            "message_uid": post.message_uid,
+            "channel_id": post.source.channel_id,
+            "channel_title": post.source.title,
+            "channel_username": post.source.username,
+            "requested_as": post.source.requested_as,
+            "views": post.views,
+            "forwards": post.forwards,
+            "like_count": post.like_count,
+            "dislike_count": post.dislike_count,
+            "reactions": [reaction.model_dump() for reaction in post.reactions],
+        }
+        if post.title:
+            payload["title"] = post.title
+        if post.meta:
+            payload.update(post.meta)
+        return payload
 
     def _insert_event(
         self,

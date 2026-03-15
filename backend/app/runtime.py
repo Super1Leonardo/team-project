@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from backend.app.collectors.rss import RssCollector
 from backend.app.collectors.telegram import TelegramCollector
 from backend.app.core.config import Settings
 from backend.app.infra.db.clickhouse import ClickHouseMentionEventsStore
@@ -30,9 +31,10 @@ def build_runtime(settings: Settings) -> ArchitectureRuntime:
     telegram_gateway = TelegramGateway(settings)
     external_ml_gateway = ExternalMLGateway(settings)
     telegram_collector = TelegramCollector(telegram_gateway)
+    rss_collector = RssCollector()
     collector_worker = CollectorWorker(
         postgres_store,
-        collectors={"telegram": telegram_collector},
+        collectors={"telegram": telegram_collector, "rss": rss_collector},
         per_source_limit=settings.collector_per_source_limit,
         idle_sleep_seconds=settings.collector_idle_sleep_seconds,
     )

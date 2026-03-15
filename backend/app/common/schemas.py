@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-ParserSource = Literal["telegram", "website"]
+ParserSource = Literal["telegram", "website", "rss"]
 
 
 class AuthSendCodeRequest(BaseModel):
@@ -111,6 +111,7 @@ class ParsedMessage(BaseModel):
     project_id: str | None = None
     source_type: ParserSource = "telegram"
     id: int
+    title: str | None = None
     text: str
     date: datetime
     views: int | None = None
@@ -120,6 +121,7 @@ class ParsedMessage(BaseModel):
     like_count: int | None = None
     dislike_count: int | None = None
     reactions: list[ReactionInfo] = Field(default_factory=list)
+    meta: dict[str, Any] = Field(default_factory=dict)
     source: MessageSource
 
 
