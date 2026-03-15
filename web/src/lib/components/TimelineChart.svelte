@@ -5,26 +5,23 @@
 	import { scaleBand } from 'd3-scale';
 
 	let {
-		chartData,
-		minMlScoreStr
+		chartData
 	}: {
 		chartData: any[];
-		minMlScoreStr: string;
 	} = $props();
 
+	// Уходим от зарезервированного слова 'negative' в ключах
 	const chartConfig = {
-		positive: { label: 'Позитив', color: 'var(--chart-2)' },
-		neutral: { label: 'Нейтрально', color: 'var(--color-muted-foreground)' },
-		negative: { label: 'Негатив', color: 'var(--color-destructive)' }
+		pos: { label: 'Позитив', color: 'var(--chart-2)' },
+		neu: { label: 'Нейтрально', color: 'var(--color-muted-foreground)' },
+		neg: { label: 'Негатив', color: 'var(--color-destructive)' }
 	} satisfies Chart.ChartConfig;
 </script>
 
 <Card.Root class="col-span-3">
 	<Card.Header>
 		<Card.Title>Динамика тональности</Card.Title>
-		<Card.Description>
-			Распределение упоминаний по дням. Данные с ML Score &ge; {minMlScoreStr}
-		</Card.Description>
+		<Card.Description>Распределение релевантных упоминаний по дням</Card.Description>
 	</Card.Header>
 	<Card.Content>
 		<div class="h-87.5 w-full">
@@ -37,9 +34,9 @@
 					seriesLayout="stack"
 					legend
 					series={[
-						{ key: 'positive', color: chartConfig.positive.color },
-						{ key: 'neutral', color: chartConfig.neutral.color },
-						{ key: 'negative', color: chartConfig.negative.color }
+						{ key: 'pos', color: chartConfig.pos.color },
+						{ key: 'neu', color: chartConfig.neu.color },
+						{ key: 'neg', color: chartConfig.neg.color }
 					]}
 					props={{
 						xAxis: { format: (d: string) => d.slice(5) },

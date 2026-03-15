@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as Card from '$lib/components/ui/shadcn/card';
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import Heading from '$lib/components/ui/Heading.svelte';
@@ -6,12 +8,28 @@
 
 	let { data } = $props();
 
-	let timeframe = $state('7d');
-	let minMlScoreStr = $state('0.7');
+	// Читаем текущий период из URL или ставим дефолт
+	let timeframe = $state(page.url.searchParams.get('period') || '7d');
 
-	let minMlScore = $derived(parseFloat(minMlScoreStr));
+	// Данные с бэка уже готовы для графика, ничего фильтровать на клиенте не нужно
+	let chartData = $derived(
+		data.timeline.map((day: any) => ({
+			date: day.date,
+			pos: day.positive,
+			neu: day.neutral,
+			neg: day.negative
+		}))
+	);
 
-	let chartData = $derived(data.timeline.filter((day: any) => day.mlConfidence >= minMlScore));
+	// Функция для обновления URL при смене периода.
+	// Это заставит SvelteKit перезапустить load-функцию и сходить на бэкенд за новыми данными.
+	function handleTimeframeChange(newValue: string) {
+		timeframe = newValue;
+		const url = new URL(page.url);
+		url.searchParams.set('period', newValue);
+		// keepFocus оставляет фокус на селекте, noScroll предотвращает прыжок страницы вверх
+		goto(url, { keepFocus: true, noScroll: true });
+	}
 </script>
 
 <div class="container mx-auto flex max-w-6xl animate-in flex-col gap-6 py-6 duration-500 fade-in">
@@ -19,18 +37,7 @@
 		<Heading>Аналитика репутации</Heading>
 
 		<div class="flex flex-wrap gap-4">
-			<Select.Root type="single" bind:value={minMlScoreStr}>
-				<Select.Trigger class="w-50">
-					ML Уверенность: &ge; {minMlScoreStr}
-				</Select.Trigger>
-				<Select.Content>
-					<Select.Item value="0.5">&ge; 0.5 (Все данные)</Select.Item>
-					<Select.Item value="0.7">&ge; 0.7 (Базовая норма)</Select.Item>
-					<Select.Item value="0.9">&ge; 0.9 (Высокая точность)</Select.Item>
-				</Select.Content>
-			</Select.Root>
-
-			<Select.Root type="single" bind:value={timeframe}>
+			<Select.Root type="single" value={timeframe} onValueChange={handleTimeframeChange}>
 				<Select.Trigger class="w-40">
 					Период: {timeframe}
 				</Select.Trigger>
@@ -77,5 +84,5 @@
 		</Card.Root>
 	</div>
 
-	<TimelineChart {chartData} {minMlScoreStr} />
+	<TimelineChart {chartData} />
 </div>
