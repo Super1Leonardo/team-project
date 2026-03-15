@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from backend.app.collectors.base import BaseCollector
 from backend.app.infra.db.postgres import BrandRadarPostgresStore
+
+logger = logging.getLogger(__name__)
 
 
 class CollectorWorker:
@@ -62,7 +65,10 @@ class CollectorWorker:
         event = stop_event or asyncio.Event()
 
         while not event.is_set():
-            await self.run_once()
+            try:
+                await self.run_once()
+            except Exception:
+                logger.exception("Collector worker iteration failed.")
             try:
                 await asyncio.wait_for(event.wait(), timeout=self.idle_sleep_seconds)
             except TimeoutError:
