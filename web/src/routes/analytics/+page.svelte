@@ -2,20 +2,16 @@
 	import * as Card from '$lib/components/ui/shadcn/card';
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import Heading from '$lib/components/ui/Heading.svelte';
-
-	// Правильный импорт графика из layerchart (ставится вместе с chart из shadcn)
-	import { BarChart } from 'layerchart';
+	import TimelineChart from '$lib/components/TimelineChart.svelte';
 
 	let { data } = $props();
 
-	// 1. ИСПРАВЛЕНИЕ: Стейты селектов теперь строго строки
 	let timeframe = $state('7d');
 	let minMlScoreStr = $state('0.7');
 
-	// Для фильтрации парсим строку обратно в число
 	let minMlScore = $derived(parseFloat(minMlScoreStr));
 
-	// Реактивное перестроение графика
+	//  Реактивное перестроение графика
 	let chartData = $derived(data.timeline.filter((day: any) => day.mlConfidence >= minMlScore));
 </script>
 
@@ -82,28 +78,5 @@
 		</Card.Root>
 	</div>
 
-	<Card.Root class="col-span-3">
-		<Card.Header>
-			<Card.Title>Динамика тональности</Card.Title>
-			<Card.Description>
-				Распределение упоминаний по дням. Данные с ML Score &ge; {minMlScoreStr}
-			</Card.Description>
-		</Card.Header>
-		<Card.Content>
-			<div class="h-87.5 w-full">
-				<BarChart
-					data={chartData}
-					x="date"
-					series={[
-						{ key: 'positive', color: 'hsl(var(--chart-2))', label: 'Позитив' },
-						{ key: 'neutral', color: 'hsl(var(--muted-foreground))', label: 'Нейтрально' },
-						{ key: 'negative', color: 'hsl(var(--destructive))', label: 'Негатив' }
-					]}
-					props={{
-						bars: { radius: 4, stroke: 'none' }
-					}}
-				/>
-			</div>
-		</Card.Content>
-	</Card.Root>
+	<TimelineChart {chartData} {minMlScoreStr} />
 </div>
