@@ -53,6 +53,24 @@ interface ApiErrorEnvelope {
 	detail?: string;
 }
 
+function parseJsonPayload(text: string): unknown {
+	const withoutBom = text.replace(/^\uFEFF/, '');
+	const trimmed = withoutBom.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(trimmed);
+	} catch (error) {
+		const firstJsonCharIndex = trimmed.search(/[\[{]/);
+		if (firstJsonCharIndex > 0) {
+			return JSON.parse(trimmed.slice(firstJsonCharIndex));
+		}
+		throw error;
+	}
+}
+
 function normalizeBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl ?? import.meta.env.PUBLIC_BRANDRADAR_API_BASE_URL ?? "http://localhost:8000";
 	return raw.endsWith("/") ? raw.slice(0, -1) : raw;
@@ -84,13 +102,14 @@ export function createBrandRadarClient(options: BrandRadarClientOptions = {}) {
 				...(init?.headers ?? {})
 			}
 		});
+		const responseText = await response.text();
 
 		if (!response.ok) {
 			let payload: unknown = null;
 			try {
-				payload = await response.json();
+				payload = parseJsonPayload(responseText);
 			} catch {
-				payload = await response.text();
+				payload = responseText;
 			}
 			const apiPayload = payload as ApiErrorEnvelope | null;
 			const message =
@@ -104,7 +123,7 @@ export function createBrandRadarClient(options: BrandRadarClientOptions = {}) {
 			return undefined as T;
 		}
 
-		const payload = (await response.json()) as T | ApiEnvelope<T>;
+		const payload = parseJsonPayload(responseText) as T | ApiEnvelope<T>;
 		if (typeof payload === "object" && payload !== null && "data" in payload) {
 			return (payload as ApiEnvelope<T>).data;
 		}

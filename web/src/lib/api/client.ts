@@ -21,6 +21,24 @@ const DEFAULT_CONFIG: ApiClientConfig = {
 	retryDelay: 1000,
 };
 
+function parseJsonPayload(text: string): unknown {
+	const withoutBom = text.replace(/^\uFEFF/, '');
+	const trimmed = withoutBom.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(trimmed);
+	} catch (error) {
+		const firstJsonCharIndex = trimmed.search(/[\[{]/);
+		if (firstJsonCharIndex > 0) {
+			return JSON.parse(trimmed.slice(firstJsonCharIndex));
+		}
+		throw error;
+	}
+}
+
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -44,14 +62,17 @@ export async function fetchApi<T>(
 			});
 
 			clearTimeout(timeoutId);
+			const responseText = await response.text();
 
 			if (!response.ok) {
 				const status = response.status;
 				let message = `Ошибка ${status}`;
 
 				try {
-					const errorData = await response.json();
-					message = errorData.detail || errorData.message || message;
+					const errorData = parseJsonPayload(responseText) as
+						| { detail?: string; message?: string }
+						| null;
+					message = errorData?.detail || errorData?.message || message;
 				} catch {
 					// Response wasn't JSON
 				}
@@ -72,8 +93,11 @@ export async function fetchApi<T>(
 				return { error: lastError };
 			}
 
-			const data = await response.json();
-			return { data: data.data ?? data };
+			const data = parseJsonPayload(responseText) as
+				| { data?: T }
+				| T
+				| null;
+			return { data: (data && typeof data === 'object' && 'data' in data ? data.data : data) as T };
 		} catch (error) {
 			clearTimeout(timeoutId);
 
