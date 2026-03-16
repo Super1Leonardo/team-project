@@ -2,25 +2,63 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/shadcn/select';
-	import { confidence, period } from '$lib/stores/filters';
+	import { confidence, period, sentiment } from '$lib/stores/filters';
 
 	function syncFromUrl() {
 		const urlConf = page.url.searchParams.get('confidence') || '0.7';
 		const urlPeriod = page.url.searchParams.get('period') || '7d';
+		const urlSentiment = page.url.searchParams.get('sentiment');
 		confidence.set(urlConf);
 		period.set(urlPeriod);
+		sentiment.set(urlSentiment);
 	}
 
 	syncFromUrl();
 
-	function updateFilter(key: string, value: string) {
+	function updateFilter(key: string, value: string | null) {
 		const url = new URL(page.url);
-		url.searchParams.set(key, value);
+		if (value) {
+			url.searchParams.set(key, value);
+		} else {
+			url.searchParams.delete(key);
+		}
 		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
+	}
+
+	function getSentimentLabel(value: string | null): string {
+		switch (value) {
+			case 'positive': return 'Позитивные';
+			case 'neutral': return 'Нейтральные';
+			case 'negative': return 'Негативные';
+			default: return 'Все тональности';
+		}
 	}
 </script>
 
 <div class="flex w-fit flex-wrap items-center gap-4 rounded-lg border bg-card p-4">
+	<div class="flex flex-col gap-1.5">
+		<span class="text-xs font-medium text-muted-foreground">Тональность</span>
+		<Select.Root
+			type="single"
+			value={$sentiment || ''}
+			onValueChange={(v) => {
+				const val = v === '' ? null : v;
+				sentiment.set(val);
+				updateFilter('sentiment', val);
+			}}
+		>
+			<Select.Trigger class="w-45">
+				{getSentimentLabel($sentiment)}
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="">Все тональности</Select.Item>
+				<Select.Item value="positive">Позитивные</Select.Item>
+				<Select.Item value="neutral">Нейтральные</Select.Item>
+				<Select.Item value="negative">Негативные</Select.Item>
+			</Select.Content>
+		</Select.Root>
+	</div>
+
 	<div class="flex flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Уверенность ML (Relevance)</span>
 		<Select.Root

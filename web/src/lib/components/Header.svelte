@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { cn } from '$lib/utils';
-	import { confidence, period } from '$lib/stores/filters';
+	import { confidence, period, sentiment } from '$lib/stores/filters';
 	import * as NavigationMenu from './ui/shadcn/navigation-menu';
 	import { navigationMenuTriggerStyle } from './ui/shadcn/navigation-menu/navigation-menu-trigger.svelte';
 
@@ -44,6 +44,7 @@
 		const params = new URLSearchParams();
 		if ($confidence) params.set('confidence', $confidence);
 		if ($period) params.set('period', $period);
+		if ($sentiment) params.set('sentiment', $sentiment);
 		const query = params.toString();
 		const base = resolve(path as '/') as string;
 		return base + (query ? `?${query}` : '');
