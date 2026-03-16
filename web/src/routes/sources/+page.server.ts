@@ -25,6 +25,16 @@ interface Source {
 	raw_posts_count: number | null;
 }
 
+interface CollectorStatus {
+	ml_queue_size: number;
+	raw_posts_total: number;
+	raw_posts_processed: number;
+	raw_posts_pending: number;
+	raw_posts_failed: number;
+	processing_status: 'idle' | 'processing' | 'ready';
+	sources: Source[];
+}
+
 async function getOrCreateProject(): Promise<{ project: Project | null; error?: string }> {
 	const projectsRes = await api.get<Project[]>(`${API_BASE_URL}/api/projects`);
 
@@ -63,6 +73,13 @@ async function fetchHealth() {
 	return healthRes.data ?? null;
 }
 
+async function fetchCollectorStatus(projectId: number) {
+	const res = await api.get<CollectorStatus>(
+		`${API_BASE_URL}/api/projects/${projectId}/collector/status`
+	);
+	return res.data ?? null;
+}
+
 export const load: PageServerLoad = async () => {
 	const { project, error: projectError } = await getOrCreateProject();
 
@@ -85,10 +102,13 @@ export const load: PageServerLoad = async () => {
 
 	const health = await fetchHealth();
 
+	const collector = project ? await fetchCollectorStatus(project.id) : null;
+
 	return {
 		project,
 		sources,
 		health,
+		collector,
 		error: error ? { message: error } : undefined,
 	};
 };
