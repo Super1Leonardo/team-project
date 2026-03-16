@@ -174,6 +174,7 @@ class _GatewayWithBadItem:
                 {
                     "raw_post_id": 2,
                     "relevance_label": "relevant",
+                    "relevance_score": 0.83,
                     "embedding": [0.5, 0.6],
                 }
             ]
@@ -189,6 +190,7 @@ class _GatewayWithOnlyBadItems:
                 {
                     "raw_post_id": int(items[0]["raw_post_id"]),
                     "relevance_label": "relevant",
+                    "relevance_score": 0.82,
                     "embedding": [0.5, 0.6],
                 }
             ]
