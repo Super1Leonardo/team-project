@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
 import { api } from '$lib/api/client';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
@@ -126,7 +127,57 @@ export const actions: Actions = {
 		);
 
 		if (result.error) {
-			return { success: false, error: result.error.message };
+			return fail(400, { error: result.error.message });
+		}
+
+		return { success: true };
+	},
+
+	createSource: async ({ request }) => {
+		const formData = await request.formData();
+		const projectId = parseInt(formData.get('project_id') as string);
+		const sourceType = formData.get('source_type') as string;
+		const sourceConfigStr = formData.get('source_config') as string;
+		const pollInterval = parseInt(formData.get('poll_interval') as string) || 3600;
+
+		let sourceConfig: Record<string, unknown> = {};
+
+		if (sourceType === 'telegram') {
+			sourceConfig = { channel: sourceConfigStr };
+		} else if (sourceType === 'rss') {
+			sourceConfig = { url: sourceConfigStr };
+		} else if (sourceType === 'website') {
+			sourceConfig = { url: sourceConfigStr };
+		}
+
+		const result = await api.post<Source>(
+			`${API_BASE_URL}/api/projects/${projectId}/sources`,
+			{
+				source_type: sourceType,
+				source_config: sourceConfig,
+				poll_interval_s: pollInterval,
+				is_active: true
+			}
+		);
+
+		if (result.error) {
+			return fail(400, { error: result.error.message });
+		}
+
+		return { success: true };
+	},
+
+	deleteSource: async ({ request }) => {
+		const formData = await request.formData();
+		const sourceId = parseInt(formData.get('source_id') as string);
+		const projectId = parseInt(formData.get('project_id') as string);
+
+		const result = await api.delete<void>(
+			`${API_BASE_URL}/api/projects/${projectId}/sources/${sourceId}`
+		);
+
+		if (result.error) {
+			return fail(400, { error: result.error.message });
 		}
 
 		return { success: true };

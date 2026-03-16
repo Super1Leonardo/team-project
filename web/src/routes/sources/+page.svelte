@@ -7,20 +7,21 @@
 	import { Button } from '$lib/components/ui/shadcn/button';
 	import {
 		Send,
-		MessageCircle,
 		Radio,
 		Server,
 		Database,
 		BrainCircuit,
 		Globe,
-		Sparkle,
-		ChevronDown
+		ChevronDown,
+		Plus,
+		Trash2
 	} from '@lucide/svelte';
 	import {
 		Collapsible,
 		CollapsibleTrigger,
 		CollapsibleContent
 	} from '$lib/components/ui/shadcn/collapsible';
+	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import {
 		tSourceType,
 		tSourceStatus,
@@ -34,6 +35,11 @@
 
 	let submittingSourceId = $state<number | null>(null);
 	let statusOpen = $state(false);
+	let addModalOpen = $state(false);
+	let sourceType = $state<'telegram' | 'rss' | 'website'>('telegram');
+	let sourceConfig = $state('');
+	let pollInterval = $state(3600);
+	let isSubmittingNew = $state(false);
 
 	const project = $derived(data.project);
 	const health = $derived(data.health);
@@ -114,11 +120,8 @@
 	function getSourceDisplayConfig(source: (typeof data.sources)[0]): string {
 		const config = source.source_config as Record<string, unknown>;
 		if (source.source_type === 'telegram') return `${config.channel}`;
-		if (source.source_type === 'vk') return String(config.domain || `ID: ${config.group_id}`);
 		if (source.source_type === 'rss') return String(config.url || config.feed_url || 'Нет URL');
 		if (source.source_type === 'website') return String(config.url || 'Нет URL');
-		if (source.source_type === 'dzen')
-			return String(config.channel || config.blog_id || 'Нет канала');
 		return 'Неизвестно';
 	}
 </script>
@@ -222,76 +225,113 @@
 								>
 									{#if source.source_type === 'telegram'}
 										<Send class="h-5 w-5" />
-									{:else if source.source_type === 'vk'}
-										<MessageCircle class="h-5 w-5" />
 									{:else if source.source_type === 'rss'}
 										<Radio class="h-5 w-5" />
 									{:else if source.source_type === 'website'}
 										<Globe class="h-5 w-5" />
-									{:else if source.source_type === 'dzen'}
-										<Sparkle class="h-5 w-5" />
 									{/if}
 								</div>
 
 								<div class="flex min-w-0 flex-1 flex-col">
-									<div class="flex items-center justify-between gap-2">
-										<span class="font-medium text-foreground"
-											>{tSourceType(source.source_type as SourceType)}</span
-										>
+									<div class="flex items-start justify-between gap-2">
+										<div class="text-foreground flex flex-col gap-0.5 truncate">
+											<div class="font-medium">{tSourceType(source.source_type as SourceType)}</div>
+											<div
+												class="text-sm text-muted-foreground"
+												title={getSourceDisplayConfig(source)}
+											>
+												{getSourceDisplayConfig(source)}
+											</div>
+										</div>
 
-										<form
-											method="POST"
-											action="?/toggleSource"
-											id="toggle-form-{source.id}"
-											class="hidden shrink-0 items-center gap-2 sm:flex"
-											use:enhance={() => {
-												submittingSourceId = source.id;
-												return async ({ result, update }) => {
-													if (result.type === 'failure') {
-														toast.error('Ошибка при обновлении источника');
-													}
-													await update();
-													submittingSourceId = null;
-												};
-											}}
-										>
-											<input type="hidden" name="source_id" value={source.id} />
-											<input type="hidden" name="project_id" value={project?.id} />
-											<input type="hidden" name="current_state" value={String(source.is_active)} />
-
-											{#if submittingSourceId === source.id}
-												<Spinner class="size-4" />
-											{/if}
-
-											<span class="text-sm {getStatusColor(status)}">
-												• {getStatusText(status)}
-											</span>
-
-											<Switch
-												checked={source.is_active}
-												disabled={submittingSourceId === source.id}
-												onCheckedChange={() => {
-													const form = document.getElementById(
-														'toggle-form-' + source.id
-													) as HTMLFormElement | null;
-													form?.requestSubmit();
+										<div class="flex flex-col gap-2 items-end">
+											<form
+												method="POST"
+												action="?/toggleSource"
+												id="toggle-form-{source.id}"
+												class="hidden shrink-0 items-center gap-2 sm:flex"
+												use:enhance={() => {
+													submittingSourceId = source.id;
+													return async ({ result, update }) => {
+														if (result.type === 'failure') {
+															toast.error('Ошибка при обновлении источника');
+														}
+														await update();
+														submittingSourceId = null;
+													};
 												}}
-											/>
-										</form>
+											>
+												<input type="hidden" name="source_id" value={source.id} />
+												<input type="hidden" name="project_id" value={project?.id} />
+												<input
+													type="hidden"
+													name="current_state"
+													value={String(source.is_active)}
+												/>
+
+												{#if submittingSourceId === source.id}
+													<Spinner class="size-4" />
+												{/if}
+
+												<span class="text-sm {getStatusColor(status)}">
+													• {getStatusText(status)}
+												</span>
+
+												<Switch
+													checked={source.is_active}
+													disabled={submittingSourceId === source.id}
+													onCheckedChange={() => {
+														const form = document.getElementById(
+															'toggle-form-' + source.id
+														) as HTMLFormElement | null;
+														form?.requestSubmit();
+													}}
+												/>
+											</form>
+
+											<form
+												method="POST"
+												action="?/deleteSource"
+												id="delete-form-{source.id}"
+												class="hidden shrink-0 sm:block"
+												use:enhance={() => {
+													return async ({ result, update }) => {
+														if (result.type === 'failure') {
+															toast.error('Ошибка при удалении источника');
+														} else if (result.type === 'success') {
+															toast.success('Источник удалён');
+														}
+														await update();
+													};
+												}}
+											>
+												<input type="hidden" name="source_id" value={source.id} />
+												<input type="hidden" name="project_id" value={project?.id} />
+												<Button
+													type="button"
+													variant="ghost"
+													size="icon"
+													class="text-muted-foreground hover:text-destructive"
+													onclick={() => {
+														if (confirm(`Удалить источник "${getSourceDisplayConfig(source)}"?`)) {
+															const form = document.getElementById(
+																`delete-form-${source.id}`
+															) as HTMLFormElement | null;
+															form?.requestSubmit();
+														}
+													}}
+												>
+													<Trash2 class="h-4 w-4" />
+												</Button>
+											</form>
+										</div>
 
 										<span class="text-sm sm:hidden {getStatusColor(status)}">
 											• {getStatusText(status)}
 										</span>
 									</div>
 
-									<span
-										class="mt-0.5 truncate text-sm text-muted-foreground"
-										title={getSourceDisplayConfig(source)}
-									>
-										{getSourceDisplayConfig(source)}
-									</span>
-
-									<div class="mt-1.5 hidden flex-col gap-1 text-sm text-muted-foreground sm:flex">
+									<div class="hidden flex-col gap-1 text-sm text-muted-foreground sm:flex">
 										<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 											<span class="whitespace-nowrap">
 												{#if source.last_collected_at}
@@ -376,6 +416,102 @@
 					{/each}
 				</div>
 			{/if}
+
+			<div class="mt-4 flex justify-end">
+				<Button onclick={() => (addModalOpen = true)}>
+					<Plus />
+					Добавить источник
+				</Button>
+			</div>
 		</section>
 	{/if}
+
+	<Dialog.Root bind:open={addModalOpen}>
+		<Dialog.Content>
+			<Dialog.Header>
+				<Dialog.Title>Добавить источник</Dialog.Title>
+				<Dialog.Description>Выберите тип источника и заполните необходимые поля</Dialog.Description>
+			</Dialog.Header>
+
+			<form
+				method="POST"
+				action="?/createSource"
+				use:enhance={() => {
+					isSubmittingNew = true;
+					return async ({ result, update }) => {
+						if (result.type === 'failure') {
+							toast.error('Ошибка при создании источника');
+						} else if (result.type === 'success') {
+							toast.success('Источник добавлен');
+							addModalOpen = false;
+							sourceConfig = '';
+							sourceType = 'telegram';
+							pollInterval = 3600;
+						}
+						await update();
+						isSubmittingNew = false;
+					};
+				}}
+			>
+				<input type="hidden" name="project_id" value={project?.id} />
+
+				<div class="space-y-4 py-4">
+					<div class="space-y-2">
+						<label for="source_type" class="text-sm font-medium">Тип источника</label>
+						<select
+							id="source_type"
+							name="source_type"
+							bind:value={sourceType}
+							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						>
+							<option value="telegram">Telegram</option>
+							<option value="rss">RSS</option>
+							<option value="website">Website</option>
+						</select>
+					</div>
+
+					<div class="space-y-2">
+						<label for="source_config" class="text-sm font-medium">
+							{#if sourceType === 'telegram'}Имя канала (без @){/if}
+							{#if sourceType === 'rss'}URL ленты{/if}
+							{#if sourceType === 'website'}URL сайта{/if}
+						</label>
+						<input
+							id="source_config"
+							name="source_config"
+							type="text"
+							bind:value={sourceConfig}
+							placeholder={sourceType === 'telegram' ? 'durov' : 'https://example.com/rss.xml'}
+							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+							required
+						/>
+					</div>
+
+					<div class="space-y-2">
+						<label for="poll_interval" class="text-sm font-medium">Интервал опроса (секунды)</label>
+						<input
+							id="poll_interval"
+							name="poll_interval"
+							type="number"
+							bind:value={pollInterval}
+							min="60"
+							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						/>
+					</div>
+				</div>
+
+				<Dialog.Footer>
+					<Button type="button" variant="outline" onclick={() => (addModalOpen = false)}
+						>Отмена</Button
+					>
+					<Button type="submit" disabled={isSubmittingNew || !sourceConfig.trim()}>
+						{#if isSubmittingNew}
+							<Spinner class="mr-2 h-4 w-4" />
+						{/if}
+						Добавить
+					</Button>
+				</Dialog.Footer>
+			</form>
+		</Dialog.Content>
+	</Dialog.Root>
 </div>
