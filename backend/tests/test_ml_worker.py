@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 
 from backend.app.core.exceptions import ExternalMLRequestError, ExternalMLResponseError
 from backend.app.ml.normalizer import MLResultNormalizer
@@ -235,6 +237,49 @@ class _ClickHouseRecorder:
 
 
 class MLWorkerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_forever_skips_idle_sleep_while_queue_has_work(self) -> None:
+        store = _WorkerStore()
+        worker = MLWorker(
+            store=store,
+            clickhouse_store=_ClickHouseRecorder(),
+            gateway=_GatewayWithBadItem(),
+            normalizer=MLResultNormalizer(store),
+            batch_size=10,
+            idle_sleep_seconds=99.0,
+        )
+        event = asyncio.Event()
+        run_once_calls: list[int] = []
+        wait_calls: list[float] = []
+
+        async def fake_run_once(batch_size: int | None = None) -> dict[str, Any]:
+            run_once_calls.append(1)
+            if len(run_once_calls) == 1:
+                return {
+                    "batch_size": 10,
+                    "stored_count": 10,
+                    "synced_count": 10,
+                    "projects": {},
+                }
+            event.set()
+            return {
+                "batch_size": 0,
+                "stored_count": 0,
+                "synced_count": 0,
+                "projects": {},
+            }
+
+        async def fake_wait_for(awaitable: Any, timeout: float) -> Any:
+            wait_calls.append(timeout)
+            return await awaitable
+
+        worker.run_once = fake_run_once  # type: ignore[method-assign]
+
+        with patch("backend.app.workers.ml_worker.asyncio.wait_for", side_effect=fake_wait_for):
+            await worker.run_forever(stop_event=event)
+
+        self.assertEqual(len(run_once_calls), 2)
+        self.assertEqual(wait_calls, [99.0])
+
     async def test_run_once_isolates_bad_posts_and_marks_them_failed(self) -> None:
         store = _WorkerStore()
         worker = MLWorker(

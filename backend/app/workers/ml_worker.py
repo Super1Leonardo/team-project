@@ -24,7 +24,7 @@ class MLWorker:
         gateway: ExternalMLGateway,
         normalizer: MLResultNormalizer,
         batch_size: int = 100,
-        idle_sleep_seconds: float = 15.0,
+        idle_sleep_seconds: float = 2.0,
     ):
         self.store = store
         self.clickhouse_store = clickhouse_store
@@ -288,10 +288,14 @@ class MLWorker:
         event = stop_event or asyncio.Event()
 
         while not event.is_set():
+            should_idle_sleep = True
             try:
-                await self.run_once()
+                result = await self.run_once()
+                should_idle_sleep = result["batch_size"] == 0
             except Exception:
                 logger.exception("ML worker iteration failed.")
+            if not should_idle_sleep:
+                continue
             try:
                 await asyncio.wait_for(event.wait(), timeout=self.idle_sleep_seconds)
             except TimeoutError:

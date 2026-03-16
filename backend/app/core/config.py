@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     collector_lookback_days: int = 30
     collector_source_concurrency: int = 4
     collector_idle_sleep_seconds: float = 5.0
-    ml_worker_batch_size: int = 20
-    ml_worker_idle_sleep_seconds: float = 15.0
+    ml_worker_batch_size: int = 100
+    ml_worker_idle_sleep_seconds: float = 2.0
     ml_dedup_threshold: float = 0.15
     ml_cluster_threshold: float = 0.22
     api_title: str = "BrandRadar API"
