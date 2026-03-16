@@ -17,7 +17,7 @@
 		publishedAt: string;
 		sentiment: 'positive' | 'negative' | 'neutral';
 		mlScore: number;
-		riskWords: string[];
+		hasRiskWords: boolean;
 		text: string;
 		duplicates: Duplicate[];
 	}
@@ -29,7 +29,7 @@
 <div class="flex flex-col gap-4">
 	{#if clusters.length === 0}
 		<div
-			class="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground mt-4"
+			class="mt-4 flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
 		>
 			Нет упоминаний по заданным фильтрам
 		</div>

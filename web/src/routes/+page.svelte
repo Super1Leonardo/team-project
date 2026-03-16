@@ -40,7 +40,7 @@
 			publishedAt: m.published_at,
 			sentiment: m.sentiment_label,
 			mlScore: Math.round(m.relevance_score * 100),
-			riskWords: m.has_risk_words && m.risk_words ? m.risk_words : [],
+			hasRiskWords: m.has_risk_words,
 			text: m.text,
 			duplicates: m.dedup?.duplicates || []
 		}))
@@ -48,7 +48,7 @@
 </script>
 
 <div class="container mx-auto max-w-3xl py-4">
-	<div class="flex w-full flex-col items-center">
+	<div class="mb-6 flex w-full flex-col items-center">
 		<Heading>Лента</Heading>
 
 		<FilterBar />

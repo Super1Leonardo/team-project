@@ -18,7 +18,8 @@
 		HoverCardContent,
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
-	import { ChevronDown, AlertCircle } from '@lucide/svelte';
+	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
+	import { ChevronDown } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
 	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
@@ -37,7 +38,7 @@
 	);
 </script>
 
-<Card class="mb-4">
+<Card class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}>
 	<CardHeader class="flex flex-row items-start justify-between pb-2">
 		<div>
 			<CardTitle class="text-lg">{cluster.title}</CardTitle>
@@ -46,30 +47,34 @@
 			>
 		</div>
 
-		<div class="flex items-center gap-2">
-			<Badge class={sentimentColor} variant="outline">
+		<div class="-mt-1.5 flex items-end gap-2">
+			<Badge class={[sentimentColor]} variant="outline">
 				{tSentiment(cluster.sentiment as SentimentLabel)}
 			</Badge>
 
-			<HoverCard>
-				<HoverCardTrigger>
-					<Badge variant="secondary" class="flex cursor-help gap-1">
-						{#if cluster.mlScore < 0.7}
-							<AlertCircle size={14} class="text-yellow-500" />
-						{/if}
-						{cluster.mlScore > 0 ? (cluster.mlScore * 100).toFixed(0) : '—'}% релевантность
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Badge variant="secondary">
+						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
 					</Badge>
-				</HoverCardTrigger>
-				<HoverCardContent class="w-64 text-sm">
-					<p class="mb-1 font-semibold">Почему такая оценка?</p>
-					<p>Найдены риск-маркеры:</p>
-					<div class="mt-2 flex flex-wrap gap-1">
-						{#each cluster.riskWords as word}
-							<Badge variant="destructive">{word}</Badge>
-						{/each}
-					</div>
-				</HoverCardContent>
-			</HoverCard>
+				</Tooltip.Trigger>
+				<Tooltip.Content>Значение релевантности</Tooltip.Content>
+			</Tooltip.Root>
+
+			{#if cluster.hasRiskWords}
+				<HoverCard>
+					<HoverCardTrigger>
+						<Badge
+							variant="outline"
+							class="flex h-5.5 min-w-5.5 cursor-help gap-1 px-1 text-lg font-bold bg-red-100 border-red-500 text-red-600 shadow-destructive/20 shadow"
+							>!</Badge
+						>
+					</HoverCardTrigger>
+					<HoverCardContent class="w-64 text-sm">
+						<p class="font-semibold">Статья содержит критически важную информацию о бизнесе</p>
+					</HoverCardContent>
+				</HoverCard>
+			{/if}
 		</div>
 	</CardHeader>
 
