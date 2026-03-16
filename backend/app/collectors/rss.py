@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 try:
     import httpx
@@ -172,7 +172,10 @@ class RssCollector(BaseCollector):
     ) -> ParsedMessage | None:
         title = cls._clean_text(cls._child_text(item, "title"))
         text = cls._extract_text(item)
-        link = cls._extract_link(item, is_atom=is_atom)
+        link = cls._normalize_public_link(
+            cls._extract_link(item, is_atom=is_atom),
+            feed_url=feed_url,
+        )
         author = cls._extract_author(item, is_atom=is_atom)
         external_id = cls._extract_external_id(item, link=link, title=title, feed_url=feed_url)
         published_at = cls._extract_datetime(item)
@@ -231,6 +234,32 @@ class RssCollector(BaseCollector):
 
         link = cls._child_text(item, "link")
         return link.strip() if link else None
+
+    @staticmethod
+    def _normalize_public_link(link: str | None, *, feed_url: str) -> str | None:
+        if not link:
+            return None
+
+        normalized_link = link.strip()
+        parsed_link = urlparse(normalized_link)
+        parsed_feed = urlparse(feed_url)
+
+        if not parsed_link.scheme and not parsed_link.netloc:
+            return urljoin(f"{parsed_feed.scheme}://{parsed_feed.netloc}", normalized_link)
+
+        if parsed_link.netloc == "rss" and parsed_feed.netloc:
+            return urlunparse(
+                (
+                    parsed_feed.scheme or parsed_link.scheme,
+                    parsed_feed.netloc,
+                    parsed_link.path,
+                    parsed_link.params,
+                    parsed_link.query,
+                    parsed_link.fragment,
+                )
+            )
+
+        return normalized_link
 
     @classmethod
     def _extract_author(cls, item: ET.Element, *, is_atom: bool) -> str | None:
