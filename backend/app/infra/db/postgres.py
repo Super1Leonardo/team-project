@@ -235,6 +235,12 @@ class BrandRadarPostgresStore:
                     )
                     cur.execute(
                         """
+                        CREATE INDEX IF NOT EXISTS idx_raw_posts_published
+                        ON raw_posts (published_at DESC, id DESC)
+                        """
+                    )
+                    cur.execute(
+                        """
                         CREATE INDEX IF NOT EXISTS idx_mentions_embedding
                         ON mentions
                         USING ivfflat (embedding vector_cosine_ops)
@@ -253,6 +259,19 @@ class BrandRadarPostgresStore:
                         """
                         CREATE INDEX IF NOT EXISTS idx_mentions_feed
                         ON mentions (project_id, processed_at DESC)
+                        WHERE relevance_label = 'relevant' AND is_primary = TRUE
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_mentions_project_processed
+                        ON mentions (project_id, processed_at DESC)
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_mentions_feed_sentiment
+                        ON mentions (project_id, sentiment_label, processed_at DESC)
                         WHERE relevance_label = 'relevant' AND is_primary = TRUE
                         """
                     )
@@ -476,6 +495,32 @@ class BrandRadarPostgresStore:
 
         if row is None:
             raise ResourceNotFoundError(f"Project {project_id} was not found.")
+        return dict(row)
+
+    def get_preferred_project(self) -> dict[str, Any]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.keywords,
+                    p.exclude_keywords,
+                    p.risk_words,
+                    p.created_at
+                FROM projects p
+                ORDER BY
+                    CASE WHEN p.name = %s THEN 0 ELSE 1 END,
+                    p.created_at DESC,
+                    p.id DESC
+                LIMIT 1
+                """,
+                (DEFAULT_BOOTSTRAP_PROJECT["name"],),
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            raise ResourceNotFoundError("No projects were found.")
         return dict(row)
 
     def update_project(
@@ -1607,9 +1652,18 @@ class BrandRadarPostgresStore:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        primary_only: bool = False,
+        relevant_only: bool = False,
+        include_total: bool = True,
     ) -> dict[str, Any]:
         conditions = ["m.project_id = %s"]
         params: list[Any] = [project_id]
+
+        if primary_only:
+            conditions.append("m.is_primary = TRUE")
+
+        if relevant_only:
+            conditions.append("m.relevance_label = 'relevant'")
 
         if confidence_threshold is not None:
             conditions.append("m.relevance_score >= %s")
@@ -1627,18 +1681,6 @@ class BrandRadarPostgresStore:
         offset = (page - 1) * page_size
 
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT COUNT(*) AS total
-                FROM mentions m
-                JOIN raw_posts rp ON rp.id = m.raw_post_id
-                JOIN sources s ON s.id = rp.source_id
-                WHERE {where_clause}
-                """,
-                params,
-            )
-            total_row = cur.fetchone()
-
             cur.execute(
                 f"""
                 SELECT
@@ -1674,9 +1716,24 @@ class BrandRadarPostgresStore:
             )
             rows = cur.fetchall()
 
+            total: int | None = None
+            if include_total:
+                cur.execute(
+                    f"""
+                    SELECT COUNT(*) AS total
+                    FROM mentions m
+                    JOIN raw_posts rp ON rp.id = m.raw_post_id
+                    JOIN sources s ON s.id = rp.source_id
+                    WHERE {where_clause}
+                    """,
+                    params,
+                )
+                total_row = cur.fetchone()
+                total = int(total_row["total"]) if total_row is not None else 0
+
         return {
             "items": [dict(row) for row in rows],
-            "total": int(total_row["total"]) if total_row is not None else 0,
+            "total": total,
         }
 
     def count_unprocessed_raw_posts(self, project_id: int | None = None) -> int:

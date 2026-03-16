@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.app.api.dependencies import (
     get_app_settings,
@@ -60,6 +61,10 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=1_000,
     )
     register_exception_handlers(app)
     app.include_router(api_router)

@@ -105,6 +105,53 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert data_params == [3, 0.7, published_after, "negative", 20, 20]
 
 
+def test_list_mentions_can_skip_total_count_for_fast_path() -> None:
+    rows = [
+        {
+            "id": 1,
+            "raw_post_id": 11,
+            "project_id": 3,
+            "relevance_score": 0.75,
+            "relevance_label": "relevant",
+            "sentiment_score": 0.65,
+            "sentiment_label": "negative",
+            "has_risk_words": True,
+            "dedup_group_id": None,
+            "is_primary": True,
+            "processed_at": datetime.now(UTC),
+            "source_id": 9,
+            "source_type": "telegram",
+            "external_id": "x-1",
+            "url": "https://example.com/x-1",
+            "title": "Title",
+            "text": "Body",
+            "author": "author",
+            "published_at": datetime.now(UTC),
+            "collected_at": datetime.now(UTC),
+        }
+    ]
+    fake_cursor = FakeCursor(total=999, rows=rows)
+    store = BrandRadarPostgresStore(Settings())
+    store._connect = lambda *args, **kwargs: FakeConnection(fake_cursor)  # type: ignore[method-assign]
+
+    result = store.list_mentions(
+        3,
+        page=1,
+        page_size=50,
+        primary_only=True,
+        relevant_only=True,
+        include_total=False,
+    )
+
+    assert result["items"] == rows
+    assert result["total"] is None
+    assert len(fake_cursor.executed) == 1
+    data_query, data_params = fake_cursor.executed[0]
+    assert "m.is_primary = TRUE" in data_query
+    assert "m.relevance_label = 'relevant'" in data_query
+    assert data_params == [3, 50, 0]
+
+
 def test_list_clusters_groups_similar_mentions_before_pagination() -> None:
     published_after = datetime.now(UTC) - timedelta(days=30)
     rows = [

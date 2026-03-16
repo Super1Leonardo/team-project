@@ -484,6 +484,9 @@ async def list_mentions(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    primary_only: bool = Query(default=False),
+    relevant_only: bool = Query(default=False),
+    include_total: bool = Query(default=True),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -494,10 +497,48 @@ async def list_mentions(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        primary_only=primary_only,
+        relevant_only=relevant_only,
+        include_total=include_total,
     )
     return _envelope(
         mentions_page["items"],
-        total=mentions_page["total"],
+        total=mentions_page["total"] if include_total else None,
+        page=page,
+        page_size=effective_page_size,
+    )
+
+
+@router.get(
+    "/feed",
+    response_model=ApiEnvelope[list[MentionResponse]],
+)
+async def list_default_feed(
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    confidence: MentionConfidenceThreshold | None = Query(default=None),
+    period: MentionPeriod | None = Query(default=None),
+    sentiment: MentionSentiment | None = Query(default=None),
+    primary_only: bool = Query(default=True),
+    relevant_only: bool = Query(default=True),
+    include_total: bool = Query(default=False),
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    effective_page_size = page_size or limit or 100
+    mentions_page = await service.list_default_mentions(
+        page=page,
+        page_size=effective_page_size,
+        confidence_threshold=confidence.threshold if confidence else None,
+        published_after=(datetime.now(UTC) - period.delta) if period else None,
+        sentiment_label=sentiment.value if sentiment else None,
+        primary_only=primary_only,
+        relevant_only=relevant_only,
+        include_total=include_total,
+    )
+    return _envelope(
+        mentions_page["items"],
+        total=mentions_page["total"] if include_total else None,
         page=page,
         page_size=effective_page_size,
     )

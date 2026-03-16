@@ -3,68 +3,29 @@ import { api } from '$lib/api/client';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
 
-interface Project {
-	id: number;
-	name: string;
-	keywords: string[];
-	exclude_keywords: string[];
-	risk_words: string[];
-}
-
-async function getOrCreateProject(): Promise<{ project: Project | null; error?: string }> {
-	const projectsRes = await api.get<Project[]>(`${API_BASE_URL}/api/projects`);
-
-	if (projectsRes.error) {
-		return { project: null, error: projectsRes.error.message };
-	}
-
-	if (!projectsRes.data || projectsRes.data.length === 0) {
-		const createRes = await api.post<Project>(`${API_BASE_URL}/api/projects`, {
-			name: 'Мой проект',
-			keywords: ['сбербанк', 'sberbank', 'сбер'],
-			exclude_keywords: [],
-			risk_words: [],
-		});
-
-		if (createRes.error) {
-			return { project: null, error: createRes.error.message };
-		}
-
-		return { project: createRes.data ?? null };
-	}
-
-	return { project: projectsRes.data[0] };
-}
-
 export const load: PageServerLoad = async ({ url }) => {
-	const { project, error: projectError } = await getOrCreateProject();
-
 	let mentions: any[] = [];
 	let error: string | undefined;
 
-	if (projectError) {
-		error = projectError;
-	} else if (project) {
-		const confidence = url.searchParams.get('confidence');
-		const period = url.searchParams.get('period');
-		const sentiment = url.searchParams.get('sentiment');
+	const confidence = url.searchParams.get('confidence');
+	const period = url.searchParams.get('period');
+	const sentiment = url.searchParams.get('sentiment');
 
-		const queryParams = new URLSearchParams();
-		queryParams.set('limit', '50');
+	const queryParams = new URLSearchParams();
+	queryParams.set('limit', '50');
 
-		if (confidence) queryParams.set('confidence', confidence);
-		if (period) queryParams.set('period', period);
-		if (sentiment) queryParams.set('sentiment', sentiment);
+	if (confidence) queryParams.set('confidence', confidence);
+	if (period) queryParams.set('period', period);
+	if (sentiment) queryParams.set('sentiment', sentiment);
 
-		const mentionsRes = await api.get<any[]>(
-			`${API_BASE_URL}/api/projects/${project.id}/mentions?${queryParams.toString()}`
-		);
+	const mentionsRes = await api.get<any[]>(
+		`${API_BASE_URL}/api/feed?${queryParams.toString()}`
+	);
 
-		if (mentionsRes.error) {
-			error = mentionsRes.error.message;
-		} else if (mentionsRes.data) {
-			mentions = mentionsRes.data;
-		}
+	if (mentionsRes.error) {
+		error = mentionsRes.error.message;
+	} else if (mentionsRes.data) {
+		mentions = mentionsRes.data;
 	}
 
 	return {

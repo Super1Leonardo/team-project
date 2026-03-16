@@ -39,6 +39,7 @@ class FakeBrandRadarService:
     def __init__(self):
         self.mention_calls: list[dict] = []
         self.cluster_calls: list[dict] = []
+        self.default_feed_calls: list[dict] = []
 
     async def list_mentions(
         self,
@@ -49,6 +50,9 @@ class FakeBrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        primary_only: bool = False,
+        relevant_only: bool = False,
+        include_total: bool = True,
     ) -> dict:
         self.mention_calls.append(
             {
@@ -58,9 +62,38 @@ class FakeBrandRadarService:
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
                 "sentiment_label": sentiment_label,
+                "primary_only": primary_only,
+                "relevant_only": relevant_only,
+                "include_total": include_total,
             }
         )
         return {"items": [_build_mention()], "total": 1}
+
+    async def list_default_mentions(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+        primary_only: bool = True,
+        relevant_only: bool = True,
+        include_total: bool = False,
+    ) -> dict:
+        self.default_feed_calls.append(
+            {
+                "page": page,
+                "page_size": page_size,
+                "confidence_threshold": confidence_threshold,
+                "published_after": published_after,
+                "sentiment_label": sentiment_label,
+                "primary_only": primary_only,
+                "relevant_only": relevant_only,
+                "include_total": include_total,
+            }
+        )
+        return {"items": [_build_mention()], "total": None}
 
     async def list_clusters(
         self,
@@ -132,6 +165,9 @@ def test_mentions_route_applies_confidence_period_and_pagination() -> None:
     assert call["page_size"] == 20
     assert call["confidence_threshold"] == 0.7
     assert call["sentiment_label"] == "negative"
+    assert call["primary_only"] is False
+    assert call["relevant_only"] is False
+    assert call["include_total"] is True
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
@@ -157,6 +193,60 @@ def test_mentions_route_accepts_limit_as_page_size_alias() -> None:
     assert call["confidence_threshold"] is None
     assert call["published_after"] is None
     assert call["sentiment_label"] is None
+    assert call["primary_only"] is False
+    assert call["relevant_only"] is False
+    assert call["include_total"] is True
+
+
+def test_mentions_route_passes_fast_path_flags() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.get(
+        "/api/projects/1/mentions",
+        params={
+            "limit": 50,
+            "primary_only": "true",
+            "relevant_only": "true",
+            "include_total": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"] == {"total": None, "page": 1, "page_size": 50}
+
+    call = service.mention_calls[-1]
+    assert call["primary_only"] is True
+    assert call["relevant_only"] is True
+    assert call["include_total"] is False
+
+
+def test_feed_route_uses_default_fast_flags() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.get(
+        "/api/feed",
+        params={
+            "limit": 50,
+            "confidence": "0.7",
+            "period": "7d",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"] == {"total": None, "page": 1, "page_size": 50}
+    assert len(payload["data"]) == 1
+
+    call = service.default_feed_calls[-1]
+    assert call["page"] == 1
+    assert call["page_size"] == 50
+    assert call["confidence_threshold"] == 0.7
+    assert call["primary_only"] is True
+    assert call["relevant_only"] is True
+    assert call["include_total"] is False
 
 
 def test_clusters_route_applies_filters_and_limit_alias() -> None:
