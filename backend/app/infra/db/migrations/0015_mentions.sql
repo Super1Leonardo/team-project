@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS mentions (
     embedding VECTOR(384),
     dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
     is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+    resolved BOOLEAN NOT NULL DEFAULT FALSE,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     clickhouse_synced_at TIMESTAMPTZ
 );

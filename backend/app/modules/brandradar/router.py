@@ -18,6 +18,7 @@ from backend.app.modules.brandradar.schemas import (
     MentionResponse,
     MentionConfidenceThreshold,
     MentionPeriod,
+    MentionResolvedUpdateRequest,
     MentionSentiment,
     ProjectCreateRequest,
     ProjectResponse,
@@ -58,6 +59,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 1,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=12),
         },
         {
@@ -80,6 +82,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 2,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=36),
         },
         {
@@ -102,6 +105,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 3,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=48),
         },
         {
@@ -124,6 +128,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 4,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=60),
         },
         {
@@ -146,6 +151,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 5,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=72),
         },
         {
@@ -168,6 +174,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 6,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=84),
         },
         {
@@ -190,6 +197,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 7,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=3),
         },
         {
@@ -212,6 +220,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 8,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=8),
         },
         {
@@ -234,6 +243,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 9,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=10),
         },
         {
@@ -256,6 +266,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 10,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=20),
         },
     ]
@@ -506,6 +517,25 @@ async def list_mentions(
         total=mentions_page["total"] if include_total else None,
         page=page,
         page_size=effective_page_size,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/mentions/{mention_id}/resolved",
+    response_model=ApiEnvelope[MentionResponse],
+)
+async def update_mention_resolved(
+    project_id: int,
+    mention_id: int,
+    payload: MentionResolvedUpdateRequest,
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    return _envelope(
+        await service.update_mention_resolved(
+            project_id,
+            mention_id,
+            resolved=payload.resolved,
+        )
     )
 
 

@@ -341,6 +341,21 @@ class BrandRadarService:
             include_total=include_total,
         )
 
+    async def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict[str, Any]:
+        await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.update_mention_resolved,
+            project_id,
+            mention_id,
+            resolved=resolved,
+        )
+
     async def list_default_mentions(
         self,
         *,

@@ -31,6 +31,7 @@ def _build_mention() -> dict:
         "has_risk_words": True,
         "dedup_group_id": None,
         "is_primary": True,
+        "resolved": False,
         "processed_at": now,
     }
 
@@ -40,6 +41,7 @@ class FakeBrandRadarService:
         self.mention_calls: list[dict] = []
         self.cluster_calls: list[dict] = []
         self.default_feed_calls: list[dict] = []
+        self.resolved_calls: list[dict] = []
 
     async def list_mentions(
         self,
@@ -130,6 +132,26 @@ class FakeBrandRadarService:
             ],
             "total": 1,
         }
+
+    async def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict:
+        self.resolved_calls.append(
+            {
+                "project_id": project_id,
+                "mention_id": mention_id,
+                "resolved": resolved,
+            }
+        )
+        mention = _build_mention()
+        mention["id"] = mention_id
+        mention["project_id"] = project_id
+        mention["resolved"] = resolved
+        return mention
 
 
 def _build_client(service: FakeBrandRadarService) -> TestClient:
@@ -280,3 +302,27 @@ def test_clusters_route_applies_filters_and_limit_alias() -> None:
     expected_lower_bound = datetime.now(UTC) - timedelta(days=30, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=30) + timedelta(seconds=5)
     assert expected_lower_bound <= call["published_after"] <= expected_upper_bound
+
+
+def test_update_mention_resolved_route_updates_single_mention() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.post(
+        "/api/projects/3/mentions/77/resolved",
+        json={"resolved": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["id"] == 77
+    assert payload["data"]["project_id"] == 3
+    assert payload["data"]["resolved"] is True
+
+    assert service.resolved_calls == [
+        {
+            "project_id": 3,
+            "mention_id": 77,
+            "resolved": True,
+        }
+    ]

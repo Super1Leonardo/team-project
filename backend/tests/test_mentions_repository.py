@@ -61,6 +61,7 @@ def test_list_mentions_filters_before_pagination() -> None:
             "has_risk_words": True,
             "dedup_group_id": None,
             "is_primary": True,
+            "resolved": False,
             "processed_at": datetime.now(UTC),
             "source_id": 9,
             "source_type": "telegram",
@@ -118,6 +119,7 @@ def test_list_mentions_can_skip_total_count_for_fast_path() -> None:
             "has_risk_words": True,
             "dedup_group_id": None,
             "is_primary": True,
+            "resolved": False,
             "processed_at": datetime.now(UTC),
             "source_id": 9,
             "source_type": "telegram",
@@ -451,3 +453,71 @@ class PersistMentionsRepositoryTests(unittest.TestCase):
         self.assertIn("UPDATE raw_posts SET ml_processed = TRUE", update_query)
         self.assertEqual(update_params, ([12],))
         self.assertEqual(fake_connection.commits, 1)
+
+
+class UpdateMentionResolvedCursor:
+    def __init__(self) -> None:
+        now = datetime.now(UTC)
+        self.executed: list[tuple[str, object]] = []
+        self._fetchone_calls = 0
+        self._updated_mention = {
+            "id": 77,
+            "raw_post_id": 900,
+            "project_id": 3,
+            "relevance_score": 0.91,
+            "relevance_label": "relevant",
+            "sentiment_score": 0.44,
+            "sentiment_label": "negative",
+            "has_risk_words": True,
+            "dedup_group_id": None,
+            "is_primary": True,
+            "resolved": True,
+            "processed_at": now,
+            "source_id": 5,
+            "source_type": "rss",
+            "external_id": "rss-77",
+            "url": "https://example.com/post-77",
+            "title": "Mention title",
+            "text": "Mention body",
+            "author": "author",
+            "published_at": now,
+            "collected_at": now,
+        }
+
+    def execute(self, query: str, params=None) -> None:
+        self.executed.append((" ".join(query.split()), params))
+
+    def fetchone(self) -> dict | None:
+        self._fetchone_calls += 1
+        if self._fetchone_calls == 1:
+            return {"id": 77}
+        if self._fetchone_calls == 2:
+            return dict(self._updated_mention)
+        raise AssertionError("fetchone called unexpectedly")
+
+    def __enter__(self) -> "UpdateMentionResolvedCursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+def test_update_mention_resolved_updates_flag_and_returns_mention() -> None:
+    fake_cursor = UpdateMentionResolvedCursor()
+    store = BrandRadarPostgresStore(Settings())
+    store._connect = lambda *args, **kwargs: FakeConnection(fake_cursor)  # type: ignore[method-assign]
+
+    result = store.update_mention_resolved(3, 77, resolved=True)
+
+    assert result["id"] == 77
+    assert result["project_id"] == 3
+    assert result["resolved"] is True
+    assert len(fake_cursor.executed) == 2
+
+    update_query, update_params = fake_cursor.executed[0]
+    select_query, select_params = fake_cursor.executed[1]
+
+    assert "UPDATE mentions SET resolved = %s" in update_query
+    assert update_params == (True, 77, 3)
+    assert "m.resolved" in select_query
+    assert select_params == (3, 77)

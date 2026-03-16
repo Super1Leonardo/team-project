@@ -130,6 +130,37 @@ class _ServiceStore:
     def fetch_unprocessed_raw_posts(self, limit: int) -> list[dict]:
         return self.raw_posts[:limit]
 
+    def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict:
+        return {
+            "id": mention_id,
+            "raw_post_id": 101,
+            "project_id": project_id,
+            "source_id": 10,
+            "source_type": "rss",
+            "external_id": "post-101",
+            "url": "https://example.com/post-101",
+            "title": "Brand update",
+            "text": "brand update",
+            "author": "Alice",
+            "published_at": datetime.now(UTC),
+            "collected_at": datetime.now(UTC),
+            "relevance_score": 0.88,
+            "relevance_label": "relevant",
+            "sentiment_score": 0.12,
+            "sentiment_label": "neutral",
+            "has_risk_words": False,
+            "dedup_group_id": None,
+            "is_primary": True,
+            "resolved": resolved,
+            "processed_at": datetime.now(UTC),
+        }
+
 
 class _RecordingCollectorWorker:
     def __init__(self) -> None:
@@ -388,3 +419,14 @@ class BrandRadarServiceTests(unittest.IsolatedAsyncioTestCase):
             result["message"],
             "ML results stored; ClickHouse sync is pending for some rows.",
         )
+
+    async def test_update_mention_resolved_delegates_to_store(self) -> None:
+        store = _ServiceStore()
+        runtime = SimpleNamespace(postgres_store=store)
+        service = BrandRadarService(runtime)
+
+        result = await service.update_mention_resolved(1, 77, resolved=True)
+
+        self.assertEqual(result["id"], 77)
+        self.assertEqual(result["project_id"], 1)
+        self.assertTrue(result["resolved"])

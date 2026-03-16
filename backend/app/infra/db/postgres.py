@@ -156,6 +156,7 @@ class BrandRadarPostgresStore:
                             embedding VECTOR(384),
                             dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
                             is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+                            resolved BOOLEAN NOT NULL DEFAULT FALSE,
                             processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             clickhouse_synced_at TIMESTAMPTZ
                         )
@@ -177,6 +178,12 @@ class BrandRadarPostgresStore:
                         """
                         ALTER TABLE mentions
                         ADD COLUMN IF NOT EXISTS clickhouse_synced_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ADD COLUMN IF NOT EXISTS resolved BOOLEAN NOT NULL DEFAULT FALSE
                         """
                     )
                     cur.execute(
@@ -1786,6 +1793,7 @@ class BrandRadarPostgresStore:
                     m.has_risk_words,
                     m.dedup_group_id,
                     m.is_primary,
+                    m.resolved,
                     m.processed_at,
                     rp.source_id,
                     s.source_type,
@@ -1827,6 +1835,71 @@ class BrandRadarPostgresStore:
             "items": [dict(row) for row in rows],
             "total": total,
         }
+
+    def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict[str, Any]:
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE mentions
+                SET resolved = %s
+                WHERE id = %s
+                  AND project_id = %s
+                RETURNING id
+                """,
+                (resolved, mention_id, project_id),
+            )
+            row = cur.fetchone()
+
+            if row is None:
+                raise ResourceNotFoundError(
+                    f"Mention {mention_id} was not found in project {project_id}."
+                )
+
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.raw_post_id,
+                    m.project_id,
+                    m.relevance_score,
+                    m.relevance_label,
+                    m.sentiment_score,
+                    m.sentiment_label,
+                    m.has_risk_words,
+                    m.dedup_group_id,
+                    m.is_primary,
+                    m.resolved,
+                    m.processed_at,
+                    rp.source_id,
+                    s.source_type,
+                    rp.external_id,
+                    rp.url,
+                    rp.title,
+                    rp.text,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                JOIN sources s ON s.id = rp.source_id
+                WHERE m.project_id = %s
+                  AND m.id = %s
+                """,
+                (project_id, mention_id),
+            )
+            mention_row = cur.fetchone()
+
+        if mention_row is None:
+            raise ResourceNotFoundError(
+                f"Mention {mention_id} was not found in project {project_id}."
+            )
+        return dict(mention_row)
 
     def count_unprocessed_raw_posts(self, project_id: int | None = None) -> int:
         conditions = [

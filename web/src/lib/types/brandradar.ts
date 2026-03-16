@@ -116,6 +116,7 @@ export interface Mention {
 	has_risk_words: boolean;
 	dedup_group_id?: number | null;
 	is_primary: boolean;
+	resolved: boolean;
 	processed_at: string;
 }
 
