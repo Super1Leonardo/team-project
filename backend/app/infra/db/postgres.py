@@ -358,6 +358,9 @@ class BrandRadarPostgresStore:
         existing_rows = list(cur.fetchall())
         updated_sources = 0
         existing_sources: set[tuple[str, str]] = set()
+        bootstrap_source_keys = self._bootstrap_source_keys()
+        canonical_source_ids: dict[tuple[str, str], int] = {}
+        duplicate_source_ids: list[tuple[int, int]] = []
 
         for row in existing_rows:
             normalized_existing_config = self._normalize_source_config(
@@ -375,12 +378,30 @@ class BrandRadarPostgresStore:
                 )
                 updated_sources += 1
 
-            existing_sources.add(
-                (
-                    row["source_type"],
-                    self._source_config_key(normalized_existing_config),
-                )
+            source_key = (
+                row["source_type"],
+                self._source_config_key(normalized_existing_config),
             )
+            if (
+                source_key in bootstrap_source_keys
+                and source_key in canonical_source_ids
+            ):
+                duplicate_source_ids.append(
+                    (int(row["id"]), canonical_source_ids[source_key])
+                )
+                continue
+
+            canonical_source_ids[source_key] = int(row["id"])
+            existing_sources.add(source_key)
+
+        for duplicate_source_id, canonical_source_id in duplicate_source_ids:
+            self._merge_source_into_existing_source(
+                cur,
+                source_id=duplicate_source_id,
+                canonical_source_id=canonical_source_id,
+            )
+            updated_sources += 1
+
         inserted_sources = 0
 
         for source in DEFAULT_BOOTSTRAP_SOURCES:
@@ -417,6 +438,57 @@ class BrandRadarPostgresStore:
             inserted_sources += 1
 
         return inserted_sources, updated_sources
+
+    @staticmethod
+    def _bootstrap_source_keys() -> set[tuple[str, str]]:
+        return {
+            (
+                source["source_type"],
+                BrandRadarPostgresStore._source_config_key(
+                    BrandRadarPostgresStore._normalize_source_config(
+                        source["source_type"],
+                        source["source_config"],
+                    )
+                ),
+            )
+            for source in DEFAULT_BOOTSTRAP_SOURCES
+        }
+
+    def _merge_source_into_existing_source(
+        self,
+        cur: psycopg.Cursor,
+        *,
+        source_id: int,
+        canonical_source_id: int,
+    ) -> None:
+        cur.execute(
+            """
+            UPDATE raw_posts rp
+            SET source_id = %s
+            WHERE rp.source_id = %s
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM raw_posts existing
+                  WHERE existing.source_id = %s
+                    AND existing.external_id = rp.external_id
+              )
+            """,
+            (canonical_source_id, source_id, canonical_source_id),
+        )
+        cur.execute(
+            """
+            DELETE FROM raw_posts
+            WHERE source_id = %s
+            """,
+            (source_id,),
+        )
+        cur.execute(
+            """
+            DELETE FROM sources
+            WHERE id = %s
+            """,
+            (source_id,),
+        )
 
     def ping(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:
