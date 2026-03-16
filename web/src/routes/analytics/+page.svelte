@@ -26,13 +26,13 @@
 
 	{#if hasError}
 		<div class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
-			<p class="mb-4 text-destructive">{data.error?.message || 'Произошла ошибка при загрузке данных'}</p>
-			<Button variant="outline" onclick={() => window.location.reload()}>
-				Повторить
-			</Button>
+			<p class="mb-4 text-destructive">
+				{data.error?.message || 'Произошла ошибка при загрузке данных'}
+			</p>
+			<Button variant="outline" onclick={() => window.location.reload()}>Повторить</Button>
 		</div>
 	{:else if hasNoTimelineData}
-		<div class="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+		<div class="rounded-lg border bg-card py-8 px-2 text-center text-muted-foreground">
 			Нет данных для отображения по выбранным фильтрам
 		</div>
 	{:else}

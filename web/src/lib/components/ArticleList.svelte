@@ -28,7 +28,7 @@
 
 <div class="flex flex-col gap-4">
 	{#if clusters.length === 0}
-		<div class="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+		<div class="rounded-lg border bg-card py-8 px-2 text-center text-muted-foreground">
 			Нет данных для отображения по выбранным фильтрам
 		</div>
 	{:else}

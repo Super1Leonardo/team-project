@@ -21,7 +21,8 @@
 	syncFromUrl();
 
 	function updateFilter(key: string, value: string | null) {
-		const isDefault = (key === 'confidence' && value === DEFAULTS.confidence) ||
+		const isDefault =
+			(key === 'confidence' && value === DEFAULTS.confidence) ||
 			(key === 'period' && value === DEFAULTS.period) ||
 			(key === 'sentiment' && !value);
 
@@ -36,15 +37,19 @@
 
 	function getSentimentLabel(value: string | null): string {
 		switch (value) {
-			case 'positive': return 'Позитивные';
-			case 'neutral': return 'Нейтральные';
-			case 'negative': return 'Негативные';
-			default: return 'Все тональности';
+			case 'positive':
+				return 'Позитивные';
+			case 'neutral':
+				return 'Нейтральные';
+			case 'negative':
+				return 'Негативные';
+			default:
+				return 'Все тональности';
 		}
 	}
 </script>
 
-<div class="flex w-fit flex-wrap items-center gap-4 rounded-lg border bg-card p-4">
+<div class="flex w-fit flex-wrap justify-center items-center gap-4 rounded-lg border bg-card p-4">
 	<div class="flex flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Тональность</span>
 		<Select.Root
