@@ -1808,7 +1808,7 @@ class BrandRadarPostgresStore:
                 JOIN raw_posts rp ON rp.id = m.raw_post_id
                 JOIN sources s ON s.id = rp.source_id
                 WHERE {where_clause}
-                ORDER BY m.processed_at DESC, m.id DESC
+                ORDER BY rp.published_at DESC, rp.id DESC
                 LIMIT %s
                 OFFSET %s
                 """,

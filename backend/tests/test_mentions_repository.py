@@ -97,6 +97,7 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert "LIMIT %s" in data_query
     assert "OFFSET %s" in data_query
     assert "m.sentiment_label = %s" in data_query
+    assert "ORDER BY rp.published_at DESC, rp.id DESC" in data_query
     assert data_params == [3, 0.7, published_after, "negative", 20, 20]
 
     assert "COUNT(*) AS total" in count_query
@@ -151,6 +152,7 @@ def test_list_mentions_can_skip_total_count_for_fast_path() -> None:
     data_query, data_params = fake_cursor.executed[0]
     assert "m.is_primary = TRUE" in data_query
     assert "m.relevance_label = 'relevant'" in data_query
+    assert "ORDER BY rp.published_at DESC, rp.id DESC" in data_query
     assert data_params == [3, 50, 0]
 
 
