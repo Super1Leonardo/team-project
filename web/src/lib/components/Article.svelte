@@ -19,7 +19,8 @@
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
-	import { ChevronDown } from '@lucide/svelte';
+	import * as Dialog from '$lib/components/ui/shadcn/dialog';
+	import { ChevronDown, ExternalLink } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
 	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
@@ -27,6 +28,9 @@
 
 	// Svelte 5 Rune для состояния раскрытия дублей
 	let isOpen = $state(false);
+
+	// Dialog state
+	let dialogOpen = $state(false);
 
 	// Цветовая кодировка тональности
 	let sentimentColor = $derived(
@@ -38,10 +42,7 @@
 	);
 </script>
 
-<Card
-	data-testid="article-card"
-	class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}
->
+<Card class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}>
 	<CardHeader class="flex flex-row items-start justify-between pb-2">
 		<div>
 			<CardTitle class="text-lg">{cluster.title}</CardTitle>
@@ -51,13 +52,13 @@
 		</div>
 
 		<div class="-mt-1.5 flex items-end gap-2">
-			<Badge data-testid="sentiment-badge" class={[sentimentColor]} variant="outline">
+			<Badge class={[sentimentColor]} variant="outline">
 				{tSentiment(cluster.sentiment as SentimentLabel)}
 			</Badge>
 
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Badge data-testid="ml-score-badge" variant="secondary">
+					<Badge variant="secondary">
 						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
 					</Badge>
 				</Tooltip.Trigger>
@@ -68,9 +69,8 @@
 				<HoverCard>
 					<HoverCardTrigger>
 						<Badge
-							data-testid="risk-words-alert"
 							variant="outline"
-							class="flex h-5.5 min-w-5.5 cursor-help gap-1 border-red-500 bg-red-100 px-1 text-lg font-bold text-red-600 shadow shadow-destructive/20"
+							class="flex h-5.5 min-w-5.5 cursor-help gap-1 px-1 text-lg font-bold bg-red-100 border-red-500 text-red-600 shadow-destructive/20 shadow"
 							>!</Badge
 						>
 					</HoverCardTrigger>
@@ -84,6 +84,41 @@
 
 	<CardContent>
 		<p class="line-clamp-3 text-sm">{cluster.text}</p>
+
+		<Dialog.Root bind:open={dialogOpen}>
+			<Dialog.Trigger>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="mt-2 w-full justify-end gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+				>
+					Читать далее <ExternalLink class="h-4 w-4" />
+				</Button>
+			</Dialog.Trigger>
+			<Dialog.Content class="max-w-3xl max-h-[80vh] overflow-y-auto m-2">
+				<Dialog.Header>
+					<Dialog.Title class="text-xl">{cluster.title}</Dialog.Title>
+					<Dialog.Description>
+						{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
+					</Dialog.Description>
+				</Dialog.Header>
+
+				<div class="space-y-4">
+					<p class="whitespace-pre-wrap">{cluster.text}</p>
+
+					{#if cluster.url}
+						<a
+							href={cluster.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+						>
+							Открыть оригинал <ExternalLink class="h-4 w-4" />
+						</a>
+					{/if}
+				</div>
+			</Dialog.Content>
+		</Dialog.Root>
 	</CardContent>
 
 	{#if cluster.duplicates.length > 0}
@@ -93,7 +128,6 @@
 					{#snippet child({ props })}
 						<Button
 							{...props}
-							data-testid="duplicates-trigger"
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
@@ -106,12 +140,9 @@
 					{/snippet}
 				</CollapsibleTrigger>
 
-				<CollapsibleContent data-testid="duplicates-list" class="space-y-3 pt-4">
+				<CollapsibleContent class="space-y-3 pt-4">
 					{#each cluster.duplicates as dup}
-						<div
-							data-testid="duplicate-item"
-							class="flex flex-col gap-1 border-l-2 border-muted pl-4"
-						>
+						<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium">{dup.source}</span>
 								<span class="text-xs text-muted-foreground"

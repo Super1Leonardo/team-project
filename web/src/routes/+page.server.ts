@@ -40,22 +40,31 @@ export const load: PageServerLoad = async ({ url }) => {
 	const mockState = url.searchParams.get('__mock');
 	if (mockState === 'success') {
 		return {
-			clusters: [{
-				id: '1',
-				source: 'telegram',
+			mentions: [{
+				id: 1,
+				raw_post_id: 1,
+				project_id: 1,
+				source_id: 1,
+				source_type: 'telegram',
+				source_name: 'telegram',
+				url: 'https://t.me/durov/101',
 				title: 'Сбой приложения',
 				text: 'Тестовый сбой в системе',
-				publishedAt: new Date().toISOString(),
-				mlScore: 100,
-				sentiment: 'negative',
-				hasRiskWords: true,
-				duplicates: []
+				author: 'Test Author',
+				published_at: new Date().toISOString(),
+				relevance_score: 1.0,
+				relevance_label: 'relevant',
+				sentiment_score: 0.2,
+				sentiment_label: 'negative',
+				has_risk_words: true,
+				dedup_group_id: null,
+				is_primary: true
 			}],
 			error: undefined
 		};
 	}
 	if (mockState === 'error') {
-		return { clusters: [], error: { message: 'ML API недоступен' } };
+		return { mentions: [], error: { message: 'ML API недоступен' } };
 	}
 	const { project, error: projectError } = await getOrCreateProject();
 

@@ -5,7 +5,7 @@ test.describe('Главная страница (Лента)', () => {
 		// Передаем флаг успешного мока прямо в URL
 		await page.goto('/?__mock=success&confidence=0.7&period=7d');
 		await expect(page.getByRole('heading', { name: 'Лента' })).toBeVisible();
-		await expect(page.getByText('Тестовый сбой в системе')).toBeVisible();
+		await expect(page.getByText('Сбой приложения')).toBeVisible();
 	});
 
 	test('Отображает ошибку, если API упал', async ({ page }) => {
