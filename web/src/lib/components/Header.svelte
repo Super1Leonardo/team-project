@@ -69,7 +69,7 @@
 							class={cn(
 								navigationMenuTriggerStyle(),
 								'relative transition-all',
-								currentUrl === url &&
+								currentUrl === url.split('?')[0] &&
 									'bg-primary text-primary-foreground hover:bg-primary-foreground hover:text-primary'
 							)}
 						>
