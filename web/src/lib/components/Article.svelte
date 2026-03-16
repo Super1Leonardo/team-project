@@ -23,16 +23,11 @@
 	import { ChevronDown, ExternalLink } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
-	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
 	let { cluster }: { cluster: any } = $props();
 
-	// Svelte 5 Rune для состояния раскрытия дублей
 	let isOpen = $state(false);
-
-	// Dialog state
 	let dialogOpen = $state(false);
 
-	// Цветовая кодировка тональности
 	let sentimentColor = $derived(
 		cluster.sentiment === 'negative'
 			? 'bg-red-100 border-red-500 text-red-800'
@@ -43,26 +38,32 @@
 </script>
 
 <Card class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}>
-	<CardHeader class="flex flex-row items-start justify-between pb-2">
-		<div>
-			<CardTitle class="text-lg">{cluster.title}</CardTitle>
-			<span class="text-sm text-muted-foreground"
-				>{cluster.source} • {new Date(cluster.publishedAt).toLocaleTimeString()}</span
-			>
+	<CardHeader class="flex flex-col gap-2 pb-2 sm:flex-row sm:items-start sm:justify-between">
+		<div class="flex flex-col">
+			<span class="text-xs text-muted-foreground sm:text-sm">
+				{cluster.source} • {new Date(cluster.publishedAt).toLocaleTimeString([], {
+					hour: '2-digit',
+					minute: '2-digit'
+				})}
+			</span>
+
+			{#if cluster.title}
+				<CardTitle class="mt-1.5 text-base leading-tight sm:text-lg">{cluster.title}</CardTitle>
+			{/if}
 		</div>
 
-		<div class="-mt-1.5 flex items-end gap-2">
-			<Badge class={[sentimentColor]} variant="outline">
+		<div class="flex flex-wrap items-center gap-2 sm:-mt-1.5 sm:justify-end">
+			<Badge class={sentimentColor} variant="outline">
 				{tSentiment(cluster.sentiment as SentimentLabel)}
 			</Badge>
 
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Badge variant="secondary">
+					<Badge variant="secondary" class="font-mono">
 						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
 					</Badge>
 				</Tooltip.Trigger>
-				<Tooltip.Content>Значение релевантности</Tooltip.Content>
+				<Tooltip.Content>Уверенность ML-модели (Relevance)</Tooltip.Content>
 			</Tooltip.Root>
 
 			{#if cluster.hasRiskWords}
@@ -70,55 +71,58 @@
 					<HoverCardTrigger>
 						<Badge
 							variant="outline"
-							class="flex h-5.5 min-w-5.5 cursor-help gap-1 px-1 text-lg font-bold bg-red-100 border-red-500 text-red-600 shadow-destructive/20 shadow"
-							>!</Badge
+							class="flex h-5 w-5 cursor-help items-center justify-center border-red-500 bg-red-100 p-0 text-lg font-bold text-red-600 shadow shadow-destructive/20"
 						>
+							!
+						</Badge>
 					</HoverCardTrigger>
 					<HoverCardContent class="w-64 text-sm">
-						<p class="font-semibold">Статья содержит критически важную информацию о бизнесе</p>
+						<p class="font-semibold">Статья содержит risk-слова бренда</p>
 					</HoverCardContent>
 				</HoverCard>
 			{/if}
 		</div>
 	</CardHeader>
 
-	<CardContent>
-		<p class="line-clamp-3 text-sm">{cluster.text}</p>
+	<CardContent class="pt-2 sm:pt-0">
+		<p class="line-clamp-4 text-sm whitespace-pre-wrap sm:line-clamp-3">{cluster.text}</p>
 
-		<Dialog.Root bind:open={dialogOpen}>
-			<Dialog.Trigger>
-				<Button
-					variant="ghost"
-					size="sm"
-					class="mt-2 w-full justify-end gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-				>
-					Читать далее <ExternalLink class="h-4 w-4" />
-				</Button>
-			</Dialog.Trigger>
-			<Dialog.Content class="max-w-3xl max-h-[80vh] overflow-y-auto m-2">
-				<Dialog.Header>
-					<Dialog.Title class="text-xl">{cluster.title}</Dialog.Title>
-					<Dialog.Description>
-						{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
-					</Dialog.Description>
-				</Dialog.Header>
+		<div class="sm:juftify-end flex w-full justify-start">
+			<Dialog.Root bind:open={dialogOpen}>
+				<Dialog.Trigger>
+					<Button
+						variant="ghost"
+						size="sm"
+						class="mt-2 w-full justify-start gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground sm:justify-end"
+					>
+						Читать далее <ExternalLink class="h-4 w-4" />
+					</Button>
+				</Dialog.Trigger>
+				<Dialog.Content class="max-h-[80vh] max-w-[80dvh] overflow-y-auto">
+					<Dialog.Header>
+						<Dialog.Title class="text-xl">{cluster.title || 'Публикация'}</Dialog.Title>
+						<Dialog.Description>
+							{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
+						</Dialog.Description>
+					</Dialog.Header>
 
-				<div class="space-y-4">
-					<p class="whitespace-pre-wrap">{cluster.text}</p>
+					<div class="space-y-4">
+						<p class="whitespace-pre-wrap">{cluster.text}</p>
 
-					{#if cluster.url}
-						<a
-							href={cluster.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-						>
-							Открыть оригинал <ExternalLink class="h-4 w-4" />
-						</a>
-					{/if}
-				</div>
-			</Dialog.Content>
-		</Dialog.Root>
+						{#if cluster.url}
+							<a
+								href={cluster.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+							>
+								Открыть оригинал <ExternalLink class="h-4 w-4" />
+							</a>
+						{/if}
+					</div>
+				</Dialog.Content>
+			</Dialog.Root>
+		</div>
 	</CardContent>
 
 	{#if cluster.duplicates.length > 0}
@@ -146,10 +150,13 @@
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium">{dup.source}</span>
 								<span class="text-xs text-muted-foreground"
-									>{new Date(dup.publishedAt).toLocaleTimeString()}</span
+									>{new Date(dup.publishedAt).toLocaleTimeString([], {
+										hour: '2-digit',
+										minute: '2-digit'
+									})}</span
 								>
 							</div>
-							<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title}</p>
+							<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
 							<div class="mt-1 flex items-center gap-2">
 								<span class="font-mono text-xs text-muted-foreground"
 									>Релевантность: {dup.mlScore > 0 ? (dup.mlScore * 100).toFixed(0) : '—'}%</span
