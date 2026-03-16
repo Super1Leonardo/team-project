@@ -38,7 +38,7 @@
 	{:else}
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 			<Card.Root>
-				<Card.Header class="pb-2">
+				<Card.Header class="pb-4">
 					<Card.Title class="text-sm font-medium text-muted-foreground"
 						>Обработано упоминаний</Card.Title
 					>
@@ -50,7 +50,7 @@
 			</Card.Root>
 
 			<Card.Root>
-				<Card.Header class="pb-6">
+				<Card.Header class="pb-4">
 					<Card.Title class="text-sm font-medium text-muted-foreground">Spike-алерты</Card.Title>
 				</Card.Header>
 				<Card.Content>
@@ -60,7 +60,7 @@
 			</Card.Root>
 
 			<Card.Root>
-				<Card.Header class="pb-6">
+				<Card.Header class="pb-4">
 					<Card.Title class="text-sm font-medium text-muted-foreground"
 						>Средняя уверенность (ML Score)</Card.Title
 					>

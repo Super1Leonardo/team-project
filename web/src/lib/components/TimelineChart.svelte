@@ -34,7 +34,7 @@
 					xScale={scaleBand().padding(0.25)}
 					x="date"
 					axis="x"
-					seriesLayout="stack"
+					seriesLayout="group"
 					legend
 					series={[
 						{ key: 'positive', color: chartConfig.positive.color },

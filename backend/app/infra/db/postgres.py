@@ -1329,6 +1329,50 @@ class BrandRadarPostgresStore:
 
         return [dict(row) for row in rows]
 
+    def get_raw_post_processing_stats(self, project_id: int | None = None) -> dict[str, int]:
+        params: list[Any] = []
+        where_clause = ""
+        if project_id is not None:
+            where_clause = "WHERE s.project_id = %s"
+            params.append(project_id)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE rp.ml_processed = TRUE) AS processed,
+                    COUNT(*) FILTER (
+                        WHERE rp.ml_processed = FALSE
+                          AND rp.ml_failed_at IS NULL
+                    ) AS pending,
+                    COUNT(*) FILTER (
+                        WHERE rp.ml_processed = FALSE
+                          AND rp.ml_failed_at IS NOT NULL
+                    ) AS failed
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                {where_clause}
+                """,
+                params,
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            return {
+                "total": 0,
+                "processed": 0,
+                "pending": 0,
+                "failed": 0,
+            }
+
+        return {
+            "total": int(row["total"] or 0),
+            "processed": int(row["processed"] or 0),
+            "pending": int(row["pending"] or 0),
+            "failed": int(row["failed"] or 0),
+        }
+
     def list_mentions(
         self,
         project_id: int,

@@ -28,7 +28,9 @@ export const translations = {
 	sourceType: {
 		telegram: "Telegram",
 		vk: "ВКонтакте",
-		rss: "RSS"
+		dzen: "Дзен",
+		rss: "RSS",
+		website: "Сайт"
 	},
 	sourceStatus: {
 		ok: "Работает",
