@@ -13,8 +13,14 @@
 		Database,
 		BrainCircuit,
 		Globe,
-		Sparkle
+		Sparkle,
+		ChevronDown
 	} from '@lucide/svelte';
+	import {
+		Collapsible,
+		CollapsibleTrigger,
+		CollapsibleContent
+	} from '$lib/components/ui/shadcn/collapsible';
 	import {
 		tSourceType,
 		tSourceStatus,
@@ -27,6 +33,7 @@
 	let { data } = $props();
 
 	let submittingSourceId = $state<number | null>(null);
+	let statusOpen = $state(false);
 
 	const project = $derived(data.project);
 	const health = $derived(data.health);
@@ -56,7 +63,7 @@
 			case 'processing':
 				return 'Обработка';
 			case 'ready':
-				return 'Готово';
+				return 'Простаивает';
 			default:
 				return 'Неизвестно';
 		}
@@ -137,62 +144,77 @@
 		</div>
 	{:else}
 		<div class="mb-4 rounded-lg border bg-card p-3">
-			<div class="mb-2 flex items-center gap-2">
-				<span
-					class={getHealthColor(healthStatus)}
-					class:w-3={true}
-					class:h-3={true}
-					class:rounded-full={true}
-				></span>
-				<span class="font-medium"
-					>Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span
-				>
-			</div>
-			<div class="mb-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
-				<div class="flex items-center gap-1">
-					<Database class="h-4 w-4" />
-					<span>PostgreSQL: {health?.postgres ? tDbStatus(health.postgres) : '?'}</span>
-				</div>
-				<div class="flex items-center gap-1">
-					<Server class="h-4 w-4" />
-					<span>ClickHouse: {health?.clickhouse ? tDbStatus(health.clickhouse) : '?'}</span>
-				</div>
-				<div class="flex items-center gap-1">
-					<BrainCircuit class="h-4 w-4" />
-					<span>ML сервис: {health?.ml ? tDbStatus(health.ml) : '?'}</span>
-				</div>
-			</div>
-			<div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
-				<div class="flex items-center gap-1">
-					<BrainCircuit class="h-4 w-4" />
-					<span>ML очередь: {health?.ml_queue_size ?? '?'}</span>
-				</div>
-			</div>
+			<Collapsible bind:open={statusOpen}>
+				<CollapsibleTrigger class="flex w-full items-center gap-2">
+					<span
+						class={getHealthColor(healthStatus)}
+						class:w-3={true}
+						class:h-3={true}
+						class:rounded-full={true}
+					></span>
+					<span class="font-medium"
+						>Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span
+					>
+					<ChevronDown
+						class="ml-auto h-4 w-4 transition-transform {statusOpen ? 'rotate-180' : ''}"
+					/>
+				</CollapsibleTrigger>
+
+				<CollapsibleContent class="mt-3 space-y-3">
+					<div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+						<div class="flex items-center gap-2 text-muted-foreground">
+							<Database class="h-4 w-4" />
+							<span>PostgreSQL:</span>
+							<span class={health?.postgres === 'healthy' ? 'text-green-500' : 'text-red-500'}
+								>{health?.postgres ? tDbStatus(health.postgres) : '?'}</span
+							>
+						</div>
+						<div class="flex items-center gap-2 text-muted-foreground">
+							<Server class="h-4 w-4" />
+							<span>ClickHouse:</span>
+							<span class={health?.clickhouse === 'healthy' ? 'text-green-500' : 'text-red-500'}
+								>{health?.clickhouse ? tDbStatus(health.clickhouse) : '?'}</span
+							>
+						</div>
+					</div>
+
+					{#if collector}
+						<div class="flex gap-2">
+							<div class="flex gap-1 items-center text-muted-foreground">
+								<BrainCircuit class="h-4 w-4" /> ML:
+							</div>
+							<div
+								class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground border rounded-sm p-1"
+							>
+								{health?.ml ? tDbStatus(health.ml) : '?'}
+								<span>Очередь: {health?.ml_queue_size ?? '?'}</span>
+								<div class="flex items-center gap-1">
+									<span
+										class={getProcessingStatusColor(processingStatus)}
+										class:w-2={true}
+										class:h-2={true}
+										class:rounded-full={true}
+									></span>
+									<span>{getProcessingStatusText(processingStatus)}</span>
+								</div>
+								<span
+									>Обработано: {collector.raw_posts_processed} из {collector.raw_posts_total}</span
+								>
+								{#if collector.raw_posts_pending > 0}
+									<span class="text-blue-500">В очереди: {collector.raw_posts_pending}</span>
+								{/if}
+								{#if collector.raw_posts_failed > 0}
+									<span class="text-destructive">Ошибок: {collector.raw_posts_failed}</span>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				</CollapsibleContent>
+			</Collapsible>
+
 			{#if health?.ml_error}
 				<div class="mt-2 text-sm text-destructive">
 					ML ошибка: {health.ml_error}
-				</div>
-			{/if}
-			{#if collector}
-				<div class="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
-					<div class="flex items-center gap-1">
-						<span
-							class={getProcessingStatusColor(processingStatus)}
-							class:w-2={true}
-							class:h-2={true}
-							class:rounded-full={true}
-						></span>
-						<span>Статус: {getProcessingStatusText(processingStatus)}</span>
-					</div>
-					<span class="text-muted-foreground"
-						>Обработано: {collector.raw_posts_processed} из {collector.raw_posts_total}</span
-					>
-					{#if collector.raw_posts_pending > 0}
-						<span class="text-blue-500">В очереди: {collector.raw_posts_pending}</span>
-					{/if}
-					{#if collector.raw_posts_failed > 0}
-						<span class="text-destructive">Ошибок: {collector.raw_posts_failed}</span>
-					{/if}
 				</div>
 			{/if}
 		</div>
