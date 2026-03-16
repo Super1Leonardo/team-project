@@ -1,9 +1,25 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-	webServer: {
-		command: 'npm run build && npm run preview',
-		port: 4173
+	testDir: './tests', // Тесты будут лежать здесь
+	fullyParallel: true,
+	reporter: 'html',
+	use: {
+		baseURL: 'http://localhost:5173',
+		trace: 'on-first-retry'
 	},
-	testMatch: '**/*.e2e.{ts,js}'
+	webServer: {
+		command: 'bun run dev',
+		url: 'http://localhost:5173',
+		reuseExistingServer: !process.env.CI
+	},
+	projects: [
+		{
+			name: 'Google Chrome',
+			use: {
+				...devices['Desktop Chrome'],
+				channel: 'chrome' // <-- ТОТ САМЫЙ ФИКС: используем установленный в ОС браузер
+			}
+		}
+	]
 });

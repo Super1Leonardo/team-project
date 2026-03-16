@@ -38,7 +38,10 @@
 	);
 </script>
 
-<Card class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}>
+<Card
+	data-testid="article-card"
+	class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}
+>
 	<CardHeader class="flex flex-row items-start justify-between pb-2">
 		<div>
 			<CardTitle class="text-lg">{cluster.title}</CardTitle>
@@ -48,13 +51,13 @@
 		</div>
 
 		<div class="-mt-1.5 flex items-end gap-2">
-			<Badge class={[sentimentColor]} variant="outline">
+			<Badge data-testid="sentiment-badge" class={[sentimentColor]} variant="outline">
 				{tSentiment(cluster.sentiment as SentimentLabel)}
 			</Badge>
 
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Badge variant="secondary">
+					<Badge data-testid="ml-score-badge" variant="secondary">
 						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
 					</Badge>
 				</Tooltip.Trigger>
@@ -65,8 +68,9 @@
 				<HoverCard>
 					<HoverCardTrigger>
 						<Badge
+							data-testid="risk-words-alert"
 							variant="outline"
-							class="flex h-5.5 min-w-5.5 cursor-help gap-1 px-1 text-lg font-bold bg-red-100 border-red-500 text-red-600 shadow-destructive/20 shadow"
+							class="flex h-5.5 min-w-5.5 cursor-help gap-1 border-red-500 bg-red-100 px-1 text-lg font-bold text-red-600 shadow shadow-destructive/20"
 							>!</Badge
 						>
 					</HoverCardTrigger>
@@ -89,6 +93,7 @@
 					{#snippet child({ props })}
 						<Button
 							{...props}
+							data-testid="duplicates-trigger"
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
@@ -101,9 +106,12 @@
 					{/snippet}
 				</CollapsibleTrigger>
 
-				<CollapsibleContent class="space-y-3 pt-4">
+				<CollapsibleContent data-testid="duplicates-list" class="space-y-3 pt-4">
 					{#each cluster.duplicates as dup}
-						<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
+						<div
+							data-testid="duplicate-item"
+							class="flex flex-col gap-1 border-l-2 border-muted pl-4"
+						>
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium">{dup.source}</span>
 								<span class="text-xs text-muted-foreground"

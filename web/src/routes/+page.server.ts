@@ -37,6 +37,26 @@ async function getOrCreateProject(): Promise<{ project: Project | null; error?: 
 }
 
 export const load: PageServerLoad = async ({ url }) => {
+	const mockState = url.searchParams.get('__mock');
+	if (mockState === 'success') {
+		return {
+			clusters: [{
+				id: '1',
+				source: 'telegram',
+				title: 'Сбой приложения',
+				text: 'Тестовый сбой в системе',
+				publishedAt: new Date().toISOString(),
+				mlScore: 100,
+				sentiment: 'negative',
+				hasRiskWords: true,
+				duplicates: []
+			}],
+			error: undefined
+		};
+	}
+	if (mockState === 'error') {
+		return { clusters: [], error: { message: 'ML API недоступен' } };
+	}
 	const { project, error: projectError } = await getOrCreateProject();
 
 	let mentions: any[] = [];

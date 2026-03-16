@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import ArticleList from '$lib/components/ArticleList.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import { Button } from '$lib/components/ui/shadcn/button';
-	import { toast } from 'svelte-sonner';
 	import type { PageData } from './$types';
 	import type { Cluster } from '$lib/components/ArticleList.svelte';
 
@@ -33,7 +33,7 @@
 	let { data }: { data: PageData } = $props();
 
 	let clusters: Cluster[] = $derived(
-		(data.mentions as BackendMention[] || []).map((m) => ({
+		((data.mentions as BackendMention[]) || []).map((m) => ({
 			id: String(m.id),
 			title: m.title || '',
 			source: m.source_name || m.source_type,
@@ -49,21 +49,30 @@
 	const hasError = $derived(!!data.error);
 </script>
 
-<div class="container mx-auto max-w-3xl py-4">
+<div class="container mx-auto max-w-3xl py-4" data-testid="feed-container">
 	<div class="mb-6 flex w-full flex-col items-center">
-		<Heading>Лента</Heading>
+		<div data-testid="page-heading">
+			<Heading>Лента</Heading>
+		</div>
 
-		<FilterBar />
+		<FilterBar data-testid="feed-filters" />
 	</div>
 
 	{#if hasError}
-		<div class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
-			<p class="mb-4 text-destructive">{data.error?.message || 'Произошла ошибка при загрузке данных'}</p>
-			<Button variant="outline" onclick={() => window.location.reload()}>
+		<div
+			data-testid="error-container"
+			class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center"
+		>
+			<p data-testid="error-message" class="mb-4 text-destructive">
+				{data.error?.message || 'Произошла ошибка при загрузке данных'}
+			</p>
+			<Button data-testid="retry-button" variant="outline" onclick={() => invalidateAll()}>
 				Повторить
 			</Button>
 		</div>
 	{:else}
-		<ArticleList {clusters} />
+		<div data-testid="article-list-wrapper">
+			<ArticleList {clusters} />
+		</div>
 	{/if}
 </div>
