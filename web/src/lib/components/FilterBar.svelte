@@ -27,7 +27,6 @@
 			(key === 'sentiment' && !value);
 
 		const url = new URL(page.url);
-
 		if (value && !isDefault) {
 			url.searchParams.set(key, value);
 		} else {
@@ -50,10 +49,8 @@
 	}
 </script>
 
-<div
-	class="grid w-full grid-cols-2 gap-3 rounded-lg border bg-card p-3 sm:flex sm:w-fit sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4 sm:p-4"
->
-	<div class="col-span-1 flex flex-col gap-1.5">
+<div class="flex w-full flex-wrap gap-3 rounded-lg border bg-card p-3 sm:w-fit sm:gap-4 sm:p-4">
+	<div class="flex min-w-[140px] flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Тональность</span>
 		<Select.Root
 			type="single"
@@ -64,7 +61,7 @@
 				updateFilter('sentiment', val);
 			}}
 		>
-			<Select.Trigger class="w-full sm:w-45">
+			<Select.Trigger class="w-full [&>span]:truncate">
 				{getSentimentLabel($sentiment)}
 			</Select.Trigger>
 			<Select.Content>
@@ -76,7 +73,7 @@
 		</Select.Root>
 	</div>
 
-	<div class="col-span-1 flex flex-col gap-1.5">
+	<div class="flex min-w-[120px] flex-1 flex-col gap-1.5 sm:max-w-[140px]">
 		<span class="text-xs font-medium text-muted-foreground">Уверенность ML</span>
 		<Select.Root
 			type="single"
@@ -86,7 +83,7 @@
 				updateFilter('confidence', v);
 			}}
 		>
-			<Select.Trigger class="w-full sm:w-45">
+			<Select.Trigger class="w-full">
 				{$confidence === '0.5' ? '≥ 50%' : $confidence === '0.7' ? '≥ 70%' : '≥ 90%'}
 			</Select.Trigger>
 			<Select.Content>
@@ -97,7 +94,7 @@
 		</Select.Root>
 	</div>
 
-	<div class="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
+	<div class="flex min-w-[140px] flex-1 flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Период анализа</span>
 		<Select.Root
 			type="single"
@@ -107,7 +104,7 @@
 				updateFilter('period', v);
 			}}
 		>
-			<Select.Trigger class="w-full sm:w-45">
+			<Select.Trigger class="w-full [&>span]:truncate">
 				{$period === '24h' ? 'За 24 часа' : $period === '7d' ? 'За 7 дней' : 'За 30 дней'}
 			</Select.Trigger>
 			<Select.Content>

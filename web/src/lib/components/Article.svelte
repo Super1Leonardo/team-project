@@ -85,7 +85,9 @@
 	</CardHeader>
 
 	<CardContent class="pt-2 sm:pt-0">
-		<p class="line-clamp-4 text-sm whitespace-pre-wrap sm:line-clamp-3">{cluster.text}</p>
+		<p class="line-clamp-4 whitespace-pre-wrap sm:line-clamp-3 {!cluster.title ? 'text-lg' : ''}">
+			{cluster.text}
+		</p>
 
 		<div class="sm:juftify-end flex w-full justify-start">
 			<Dialog.Root bind:open={dialogOpen}>
@@ -98,9 +100,12 @@
 						Читать далее <ExternalLink class="h-4 w-4" />
 					</Button>
 				</Dialog.Trigger>
-				<Dialog.Content class="max-h-[80vh] max-w-[80dvh] overflow-y-auto">
+				<Dialog.Content
+					class="max-h-[80vh] w-full overflow-y-auto sm:max-w-3xl"
+					onOpenAutoFocus={(e) => e.preventDefault()}
+				>
 					<Dialog.Header>
-						<Dialog.Title class="text-xl">{cluster.title || 'Публикация'}</Dialog.Title>
+						<Dialog.Title class="text-2xl">{cluster.title || 'Публикация'}</Dialog.Title>
 						<Dialog.Description>
 							{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
 						</Dialog.Description>
