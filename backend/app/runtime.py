@@ -42,6 +42,7 @@ def build_runtime(settings: Settings) -> ArchitectureRuntime:
             "website": website_collector,
         },
         lookback_days=settings.collector_lookback_days,
+        source_concurrency=settings.collector_source_concurrency,
         idle_sleep_seconds=settings.collector_idle_sleep_seconds,
     )
     ml_normalizer = MLResultNormalizer(

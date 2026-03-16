@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from datetime import UTC, datetime, timedelta
 
@@ -36,6 +37,25 @@ class _CollectorWorkerStore:
 
     def record_collection_error(self, source: dict[str, object], error: str) -> None:
         self.error_calls.append((int(source["id"]), error))
+
+
+class _BlockingCollector:
+    def __init__(self) -> None:
+        self.started_source_ids: list[int] = []
+        self.both_started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def collect(
+        self,
+        source: dict[str, object],
+        *,
+        published_after: datetime | None = None,
+    ) -> list[object]:
+        self.started_source_ids.append(int(source["id"]))
+        if len(self.started_source_ids) >= 2:
+            self.both_started.set()
+        await self.release.wait()
+        return []
 
 
 class CollectorWorkerTests(unittest.IsolatedAsyncioTestCase):
@@ -93,3 +113,29 @@ class CollectorWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(published_after)
         self.assertLessEqual(before, published_after)
         self.assertLessEqual(published_after, after)
+
+    async def test_run_sources_processes_sources_in_parallel_up_to_limit(self) -> None:
+        collector = _BlockingCollector()
+        store = _CollectorWorkerStore()
+        worker = CollectorWorker(
+            store=store,
+            collectors={"rss": collector},
+            source_concurrency=2,
+        )
+
+        run_task = asyncio.create_task(
+            worker.run_sources(
+                [
+                    {"id": 21, "source_type": "rss"},
+                    {"id": 22, "source_type": "rss"},
+                ]
+            )
+        )
+
+        await asyncio.wait_for(collector.both_started.wait(), timeout=1.0)
+        collector.release.set()
+        result = await run_task
+
+        self.assertEqual(result["sources_processed"], 2)
+        self.assertEqual(sorted(collector.started_source_ids), [21, 22])
+        self.assertEqual(sorted(store.saved_calls), [(21, 0), (22, 0)])

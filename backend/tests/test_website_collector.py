@@ -55,6 +55,37 @@ DETAIL_OLDER_HTML = """\
 """
 
 
+class _FakeWebsiteResponse:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FakeWebsiteAsyncClient:
+    def __init__(self, bodies: dict[str, str]) -> None:
+        self.bodies = bodies
+        self.requested_urls: list[str] = []
+        self.enter_count = 0
+        self.exit_count = 0
+
+    async def __aenter__(self) -> "_FakeWebsiteAsyncClient":
+        self.enter_count += 1
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        self.exit_count += 1
+        return None
+
+    async def get(self, url: str) -> _FakeWebsiteResponse:
+        self.requested_urls.append(url)
+        body = self.bodies.get(url)
+        if body is None:
+            raise AssertionError(f"Unexpected URL requested: {url}")
+        return _FakeWebsiteResponse(body)
+
+
 class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_collect_parses_articles_and_filters_by_published_after(self) -> None:
         async def fake_fetcher(url: str) -> str:
@@ -105,6 +136,32 @@ class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
             "https://origin.example.com/newer-post",
         )
         self.assertEqual(newer_item.text, "Full newer text with details.")
+
+    async def test_collect_reuses_one_http_client_for_index_and_detail_pages(self) -> None:
+        collector = WebsiteCollector()
+        fake_client = _FakeWebsiteAsyncClient(
+            {
+                "https://example.com/news": INDEX_HTML,
+                "https://example.com/post/older-post": DETAIL_OLDER_HTML,
+                "https://example.com/post/newer-post": DETAIL_NEWER_HTML,
+            }
+        )
+        collector._build_client = lambda: fake_client  # type: ignore[method-assign]
+        source = {"id": 28, "source_config": {"url": "https://example.com/news"}}
+
+        items = await collector.collect(source)
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(fake_client.enter_count, 1)
+        self.assertEqual(fake_client.exit_count, 1)
+        self.assertEqual(fake_client.requested_urls[0], "https://example.com/news")
+        self.assertEqual(
+            set(fake_client.requested_urls[1:]),
+            {
+                "https://example.com/post/older-post",
+                "https://example.com/post/newer-post",
+            },
+        )
 
     async def test_collect_requires_valid_website_url(self) -> None:
         async def fake_fetcher(_: str) -> str:

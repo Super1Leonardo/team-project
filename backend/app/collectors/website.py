@@ -44,7 +44,7 @@ class WebsiteCollector(BaseCollector):
         *,
         detail_concurrency: int = 5,
     ):
-        self._fetcher = fetcher or self._fetch
+        self._fetcher = fetcher
         self._detail_concurrency = max(1, detail_concurrency)
 
     @staticmethod
@@ -69,7 +69,34 @@ class WebsiteCollector(BaseCollector):
 
         base_url = self._get_source_url(source_config, source_id=source["id"])
         selectors = self._resolve_selectors(source_config, source_id=source["id"])
-        index_body = await self._fetcher(base_url)
+        if self._fetcher is not None:
+            return await self._collect_with_fetcher(
+                fetcher=self._fetcher,
+                base_url=base_url,
+                selectors=selectors,
+                published_after=published_after,
+            )
+
+        async with self._build_client() as client:
+            async def fetch(url: str) -> str:
+                return await self._fetch_with_client(client, url)
+
+            return await self._collect_with_fetcher(
+                fetcher=fetch,
+                base_url=base_url,
+                selectors=selectors,
+                published_after=published_after,
+            )
+
+    async def _collect_with_fetcher(
+        self,
+        *,
+        fetcher: Callable[[str], Awaitable[str]],
+        base_url: str,
+        selectors: dict[str, str],
+        published_after: datetime | None,
+    ) -> list[ParsedMessage]:
+        index_body = await fetcher(base_url)
         site_title, entries = self._parse_index_page(base_url, index_body, selectors)
         unique_entries = self._deduplicate_entries(entries)
         if published_after is not None:
@@ -82,24 +109,32 @@ class WebsiteCollector(BaseCollector):
             return []
 
         return await self._hydrate_entries(
+            fetcher=fetcher,
             base_url=base_url,
             site_title=site_title,
             entries=unique_entries,
             selectors=selectors,
         )
 
-    async def _fetch(self, url: str) -> str:
+    def _build_client(self) -> httpx.AsyncClient:
         if httpx is None:
             raise RuntimeError("httpx is required to fetch website sources.")
         timeout = httpx.Timeout(20.0)
-        async with httpx.AsyncClient(
+        return httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=True,
             headers={"User-Agent": "BrandRadarWebsiteCollector/1.0"},
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.text
+        )
+
+    async def _fetch(self, url: str) -> str:
+        async with self._build_client() as client:
+            return await self._fetch_with_client(client, url)
+
+    @staticmethod
+    async def _fetch_with_client(client: httpx.AsyncClient, url: str) -> str:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text
 
     @classmethod
     def _get_source_url(cls, source_config: dict[str, Any], *, source_id: object) -> str:
@@ -195,6 +230,7 @@ class WebsiteCollector(BaseCollector):
     async def _hydrate_entries(
         self,
         *,
+        fetcher: Callable[[str], Awaitable[str]],
         base_url: str,
         site_title: str,
         entries: list[dict[str, Any]],
@@ -208,6 +244,7 @@ class WebsiteCollector(BaseCollector):
         async def hydrate(entry: dict[str, Any]) -> ParsedMessage:
             async with semaphore:
                 detail_payload = await self._load_detail_page(
+                    fetcher=fetcher,
                     detail_url=entry["detail_url"],
                     selectors=selectors,
                 )
@@ -249,11 +286,12 @@ class WebsiteCollector(BaseCollector):
     async def _load_detail_page(
         self,
         *,
+        fetcher: Callable[[str], Awaitable[str]],
         detail_url: str,
         selectors: dict[str, str],
     ) -> dict[str, str]:
         try:
-            detail_body = await self._fetcher(detail_url)
+            detail_body = await fetcher(detail_url)
         except Exception:
             return {
                 "title": "",
