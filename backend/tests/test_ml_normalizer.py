@@ -146,6 +146,40 @@ class MLResultNormalizerTests(unittest.TestCase):
                 remote_results=[],
             )
 
+    def test_normalize_remote_results_uses_ml_confidence_alias(self) -> None:
+        normalized = self.normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "is_relevant": True,
+                    "confidence": 0.73,
+                    "sentiment": "neutral",
+                    "sentiment_score": 0.11,
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["relevance_score"], 0.73)
+
+    def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
+        with self.assertRaisesRegex(
+            ExternalMLResponseError,
+            "must contain a valid relevance score",
+        ):
+            self.normalizer.normalize_remote_results(
+                queue_items=self.queue_items[:1],
+                remote_results=[
+                    {
+                        "company": "Brand Radar",
+                        "is_relevant": True,
+                        "sentiment": "neutral",
+                        "sentiment_score": 0.11,
+                    }
+                ],
+            )
+
     def test_split_queue_items_for_ml_skips_non_matching_and_excluded_items(self) -> None:
         ml_items, skipped_items = self.normalizer.split_queue_items_for_ml(
             self.queue_items,

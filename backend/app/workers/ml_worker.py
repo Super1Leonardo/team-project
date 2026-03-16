@@ -87,12 +87,72 @@ class MLWorker:
         return 0
 
     async def run_once(self, batch_size: int | None = None) -> dict[str, Any]:
+        return await self._run_once(batch_size=batch_size, project_id=None)
+
+    async def run_until_project_queue_drained(
+        self,
+        project_id: int,
+        *,
+        batch_size: int | None = None,
+        max_batches: int = 100,
+    ) -> dict[str, Any]:
+        effective_batch_size = batch_size if batch_size is not None else self.batch_size
+        aggregated_projects: dict[int, dict[str, int]] = {}
+        total_batch_size = 0
+        total_stored_count = 0
+        total_synced_count = 0
+
+        for _ in range(max_batches):
+            result = await self._run_once(
+                batch_size=effective_batch_size,
+                project_id=project_id,
+            )
+            total_batch_size += result["batch_size"]
+            total_stored_count += result["stored_count"]
+            total_synced_count += result["synced_count"]
+
+            for project_key, stats in result["projects"].items():
+                aggregated = aggregated_projects.setdefault(
+                    int(project_key),
+                    {
+                        "batch_size": 0,
+                        "relevant_count": 0,
+                        "irrelevant_count": 0,
+                        "dedup_count": 0,
+                    },
+                )
+                for key in ("batch_size", "relevant_count", "irrelevant_count", "dedup_count"):
+                    aggregated[key] += int(stats.get(key, 0))
+
+            if result["batch_size"] == 0:
+                break
+
+        return {
+            "batch_size": total_batch_size,
+            "stored_count": total_stored_count,
+            "synced_count": total_synced_count,
+            "projects": aggregated_projects,
+        }
+
+    async def _run_once(
+        self,
+        *,
+        batch_size: int | None,
+        project_id: int | None,
+    ) -> dict[str, Any]:
         effective_batch_size = batch_size if batch_size is not None else self.batch_size
         synced_count = await self.sync_pending_mentions(limit=effective_batch_size)
-        raw_posts = await asyncio.to_thread(
-            self.store.fetch_unprocessed_raw_posts,
-            effective_batch_size,
-        )
+        if project_id is None:
+            raw_posts = await asyncio.to_thread(
+                self.store.fetch_unprocessed_raw_posts,
+                effective_batch_size,
+            )
+        else:
+            raw_posts = await asyncio.to_thread(
+                self.store.fetch_unprocessed_raw_posts,
+                effective_batch_size,
+                project_id=project_id,
+            )
         queue_items = self.normalizer.build_queue_items(raw_posts)
         if not queue_items:
             return {

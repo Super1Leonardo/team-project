@@ -5,6 +5,15 @@ from typing import TYPE_CHECKING, Any
 
 from backend.app.core.exceptions import ExternalMLResponseError
 
+ML_CONFIDENCE_KEYS = (
+    "relevance_score",
+    "confidence",
+    "confidence_score",
+    "score",
+    "relevance_probability",
+    "confidence_probability",
+)
+
 if TYPE_CHECKING:
     from backend.app.infra.db.postgres import BrandRadarPostgresStore
 
@@ -87,18 +96,6 @@ class MLResultNormalizer:
                 remote_item=result,
                 index=index,
             )
-            ml_relevance_label = self._normalize_relevance_label(result)
-            ml_relevance_score = self._normalize_float(
-                result,
-                keys=("relevance_score", "score", "relevance_probability"),
-                default=1.0 if ml_relevance_label == "relevant" else 0.0,
-            )
-            sentiment_label = self._normalize_sentiment_label(result)
-            sentiment_score = self._normalize_float(
-                result,
-                keys=("sentiment_score", "sentiment_value", "polarity"),
-                default=0.0,
-            )
             has_keyword_match = self._matches_keywords(
                 queue_item["text"],
                 queue_item["keywords"],
@@ -107,11 +104,22 @@ class MLResultNormalizer:
                 queue_item["text"],
                 queue_item["exclude_keywords"],
             )
-            relevance_label = ml_relevance_label
-            relevance_score = ml_relevance_score
+            relevance_label = self._normalize_relevance_label(result)
+            relevance_score = 0.0
             if has_excluded_match or not has_keyword_match:
                 relevance_label = "irrelevant"
-                relevance_score = 0.0
+            else:
+                relevance_score = self._normalize_required_float(
+                    result,
+                    keys=ML_CONFIDENCE_KEYS,
+                    field_name="relevance score",
+                )
+            sentiment_label = self._normalize_sentiment_label(result)
+            sentiment_score = self._normalize_float(
+                result,
+                keys=("sentiment_score", "sentiment_value", "polarity"),
+                default=0.0,
+            )
             has_risk_words = self._contains_any(
                 queue_item["text"],
                 queue_item["risk_words"],
@@ -268,6 +276,25 @@ class MLResultNormalizer:
             except (TypeError, ValueError):
                 continue
         return float(default)
+
+    @staticmethod
+    def _normalize_required_float(
+        payload: dict[str, Any],
+        *,
+        keys: tuple[str, ...],
+        field_name: str,
+    ) -> float:
+        for key in keys:
+            value = payload.get(key)
+            if value is None:
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+        raise ExternalMLResponseError(
+            f"External ML result must contain a valid {field_name} in one of: {', '.join(keys)}."
+        )
 
     @staticmethod
     def _normalize_relevance_label(payload: dict[str, Any]) -> str:
