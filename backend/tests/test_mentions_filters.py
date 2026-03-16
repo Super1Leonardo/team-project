@@ -47,6 +47,7 @@ class FakeBrandRadarService:
         page_size: int = 100,
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
+        sentiment_label: str | None = None,
     ) -> dict:
         self.calls.append(
             {
@@ -55,6 +56,7 @@ class FakeBrandRadarService:
                 "page_size": page_size,
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
+                "sentiment_label": sentiment_label,
             }
         )
         return {"items": [_build_mention()], "total": 1}
@@ -78,6 +80,7 @@ def test_mentions_route_applies_confidence_period_and_pagination() -> None:
             "page_size": 20,
             "confidence": "0.7",
             "period": "7d",
+            "sentiment": "negative",
         },
     )
 
@@ -91,6 +94,7 @@ def test_mentions_route_applies_confidence_period_and_pagination() -> None:
     assert call["page"] == 2
     assert call["page_size"] == 20
     assert call["confidence_threshold"] == 0.7
+    assert call["sentiment_label"] == "negative"
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
@@ -115,3 +119,4 @@ def test_mentions_route_accepts_limit_as_page_size_alias() -> None:
     assert call["page_size"] == 15
     assert call["confidence_threshold"] is None
     assert call["published_after"] is None
+    assert call["sentiment_label"] is None

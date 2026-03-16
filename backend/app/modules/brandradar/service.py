@@ -284,6 +284,7 @@ class BrandRadarService:
         page_size: int = 100,
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
+        sentiment_label: str | None = None,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
@@ -293,6 +294,7 @@ class BrandRadarService:
             page_size=page_size,
             confidence_threshold=confidence_threshold,
             published_after=published_after,
+            sentiment_label=sentiment_label,
         )
 
     async def get_health(self) -> dict[str, Any]:
