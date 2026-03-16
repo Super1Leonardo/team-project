@@ -17,12 +17,25 @@
 	let keywords = $state([...(data.project?.keywords ?? [])]);
 	let excludeKeywords = $state([...(data.project?.exclude_keywords ?? [])]);
 	let riskWords = $state([...(data.project?.risk_words ?? [])]);
+	let refreshInterval = $state(
+		parseInt(
+			(typeof localStorage !== 'undefined' ? localStorage.getItem('feedRefreshInterval') : null) ||
+				'5',
+			10
+		)
+	);
 
 	$effect(() => {
 		keywords = [...(data.project?.keywords ?? [])];
 		excludeKeywords = [...(data.project?.exclude_keywords ?? [])];
 		riskWords = [...(data.project?.risk_words ?? [])];
 	});
+
+	function saveRefreshInterval() {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem('feedRefreshInterval', String(refreshInterval));
+		}
+	}
 
 	let hasChanges = $derived(
 		keywords.join(',') !== (project?.keywords ?? []).join(',') ||
@@ -99,6 +112,28 @@
 					{/if}
 					Сохранить
 				</Button>
+
+				<h2 class="text-xl font-semibold mb-0">Локальные настройки</h2>
+				<p class="text-sm text-muted-foreground mb-4">
+					Локальные настройки сохраняются автоматически в браузере
+				</p>
+				<section class="rounded-lg border bg-card p-4">
+					<div class="flex items-center gap-4">
+						<label for="refreshInterval" class="text-sm font-medium">
+							Автообновление ленты (минуты):
+						</label>
+						<input
+							id="refreshInterval"
+							type="number"
+							min="1"
+							max="60"
+							bind:value={refreshInterval}
+							onchange={saveRefreshInterval}
+							class="flex h-10 w-20 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+						/>
+						<span class="text-sm text-muted-foreground">1-60 минут</span>
+					</div>
+				</section>
 			</div>
 		</form>
 	</section>

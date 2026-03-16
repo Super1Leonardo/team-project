@@ -3,7 +3,6 @@
 	import ArticleList from '$lib/components/ArticleList.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import { Button } from '$lib/components/ui/shadcn/button';
-	import { toast } from 'svelte-sonner';
 	import type { PageData } from './$types';
 	import type { Cluster } from '$lib/components/ArticleList.svelte';
 
