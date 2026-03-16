@@ -2,16 +2,20 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/shadcn/select';
+	import { confidence, period } from '$lib/stores/filters';
 
-	// Синхронизация с URL (Svelte 5 Runes)
-	let currentConfidence = $derived(page.url.searchParams.get('confidence') || '0.7');
-	let currentPeriod = $derived(page.url.searchParams.get('period') || '7d');
+	function syncFromUrl() {
+		const urlConf = page.url.searchParams.get('confidence') || '0.7';
+		const urlPeriod = page.url.searchParams.get('period') || '7d';
+		confidence.set(urlConf);
+		period.set(urlPeriod);
+	}
 
-	// При изменении селекта обновляем URL, SvelteKit сам перезапустит load-функцию
+	syncFromUrl();
+
 	function updateFilter(key: string, value: string) {
 		const url = new URL(page.url);
 		url.searchParams.set(key, value);
-		// keepFocus и noScroll сохраняют UX "бесшовного" обновления
 		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
 	}
 </script>
@@ -21,13 +25,16 @@
 		<span class="text-xs font-medium text-muted-foreground">Уверенность ML (Relevance)</span>
 		<Select.Root
 			type="single"
-			value={currentConfidence}
-			onValueChange={(v) => updateFilter('confidence', v)}
+			value={$confidence}
+			onValueChange={(v) => {
+				confidence.set(v);
+				updateFilter('confidence', v);
+			}}
 		>
 			<Select.Trigger class="w-45">
-				{currentConfidence === '0.5'
+				{$confidence === '0.5'
 					? 'Средняя (≥ 50%)'
-					: currentConfidence === '0.7'
+					: $confidence === '0.7'
 						? 'Высокая (≥ 70%)'
 						: 'Строгая (≥ 90%)'}
 			</Select.Trigger>
@@ -43,13 +50,16 @@
 		<span class="text-xs font-medium text-muted-foreground">Период анализа</span>
 		<Select.Root
 			type="single"
-			value={currentPeriod}
-			onValueChange={(v) => updateFilter('period', v)}
+			value={$period}
+			onValueChange={(v) => {
+				period.set(v);
+				updateFilter('period', v);
+			}}
 		>
 			<Select.Trigger class="w-45">
-				{currentPeriod === '24h'
+				{$period === '24h'
 					? 'Последние 24 часа'
-					: currentPeriod === '7d'
+					: $period === '7d'
 						? 'Последние 7 дней'
 						: 'Последние 30 дней'}
 			</Select.Trigger>

@@ -29,14 +29,9 @@
 <div class="flex flex-col gap-4">
 	{#if clusters.length === 0}
 		<div
-			class="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+			class="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground mt-4"
 		>
-			<div>
-				Нет упоминаний по
-				<a href={resolve('/analytics')} class="underline text-accent-foreground">
-					заданным фильтрам
-				</a>
-			</div>
+			Нет упоминаний по заданным фильтрам
 		</div>
 	{:else}
 		{#each clusters as clusterData (clusterData.id)}
