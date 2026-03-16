@@ -84,7 +84,7 @@
 
 	<CardContent>
 		<p class="line-clamp-3 text-sm">{cluster.text}</p>
-		
+
 		<Dialog.Root bind:open={dialogOpen}>
 			<Dialog.Trigger>
 				<Button
@@ -95,21 +95,21 @@
 					Читать далее <ExternalLink class="h-4 w-4" />
 				</Button>
 			</Dialog.Trigger>
-			<Dialog.Content class="max-w-2xl max-h-[80vh] overflow-y-auto">
+			<Dialog.Content class="max-w-3xl max-h-[80vh] overflow-y-auto m-2">
 				<Dialog.Header>
 					<Dialog.Title class="text-xl">{cluster.title}</Dialog.Title>
 					<Dialog.Description>
 						{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
 					</Dialog.Description>
 				</Dialog.Header>
-				
+
 				<div class="space-y-4">
 					<p class="whitespace-pre-wrap">{cluster.text}</p>
-					
+
 					{#if cluster.url}
-						<a 
-							href={cluster.url} 
-							target="_blank" 
+						<a
+							href={cluster.url}
+							target="_blank"
 							rel="noopener noreferrer"
 							class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
 						>
