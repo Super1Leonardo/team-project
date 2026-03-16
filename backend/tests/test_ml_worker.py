@@ -180,6 +180,21 @@ class _GatewayWithBadItem:
         }
 
 
+class _GatewayWithOnlyBadItems:
+    async def predict(self, items: list[dict[str, Any]]) -> Any:
+        if len(items) > 1:
+            raise ExternalMLResponseError("batch payload mismatch")
+        return {
+            "items": [
+                {
+                    "raw_post_id": int(items[0]["raw_post_id"]),
+                    "relevance_label": "relevant",
+                    "embedding": [0.5, 0.6],
+                }
+            ]
+        }
+
+
 class _TransientFailureGateway:
     async def predict(self, items: list[dict[str, Any]]) -> Any:
         raise ExternalMLRequestError("service unavailable", status_code=503)
@@ -250,6 +265,36 @@ class MLWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(store.failed_rows, [])
         self.assertEqual(store.persisted_rows, [])
+
+    async def test_run_once_marks_all_rows_failed_when_all_permanent_failures(self) -> None:
+        store = _WorkerStore()
+        worker = MLWorker(
+            store=store,
+            clickhouse_store=_ClickHouseRecorder(),
+            gateway=_GatewayWithOnlyBadItems(),
+            normalizer=MLResultNormalizer(store),
+            batch_size=10,
+        )
+
+        result = await worker.run_once()
+
+        self.assertEqual(result["batch_size"], 2)
+        self.assertEqual(result["stored_count"], 0)
+        self.assertEqual(result["synced_count"], 0)
+        self.assertEqual(store.persisted_rows, [])
+        self.assertEqual(
+            store.failed_rows,
+            [
+                {
+                    "raw_post_id": 1,
+                    "error": "ExternalMLResponseError: External ML result must contain a valid embedding with 384 numeric values.",
+                },
+                {
+                    "raw_post_id": 2,
+                    "error": "ExternalMLResponseError: External ML result must contain a valid embedding with 384 numeric values.",
+                },
+            ],
+        )
 
     async def test_persist_mention_rows_syncs_after_postgres_persist(self) -> None:
         call_order: list[str] = []

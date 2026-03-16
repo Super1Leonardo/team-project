@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unittest
 from datetime import UTC, datetime, timedelta
 
 from backend.app.core.config import Settings
@@ -102,3 +103,137 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert "OFFSET %s" in data_query
     assert "m.sentiment_label = %s" in data_query
     assert data_params == [3, 0.7, published_after, "negative", 20, 20]
+
+
+class PersistMentionsCursor:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, object]] = []
+        self._fetchall_calls = 0
+        self._fetchone_calls = 0
+
+    def execute(self, query: str, params=None) -> None:
+        self.executed.append((" ".join(query.split()), params))
+
+    def fetchall(self) -> list[dict]:
+        self._fetchall_calls += 1
+        if self._fetchall_calls == 1:
+            return [
+                {
+                    "id": 11,
+                    "source_id": 9,
+                    "author": "author",
+                    "published_at": datetime.now(UTC),
+                    "collected_at": datetime.now(UTC),
+                    "ml_processed": False,
+                    "project_id": 3,
+                    "source_type": "telegram",
+                }
+            ]
+        raise AssertionError("fetchall called unexpectedly")
+
+    def fetchone(self) -> dict:
+        self._fetchone_calls += 1
+        if self._fetchone_calls == 1:
+            return {
+                "id": 101,
+                "raw_post_id": 11,
+                "project_id": 3,
+                "relevance_score": 0.0,
+                "relevance_label": "irrelevant",
+                "sentiment_score": 0.0,
+                "sentiment_label": "neutral",
+                "has_risk_words": False,
+                "dedup_group_id": None,
+                "is_primary": True,
+                "processed_at": datetime.now(UTC),
+            }
+        raise AssertionError("fetchone called unexpectedly")
+
+    def __enter__(self) -> "PersistMentionsCursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+class PersistMentionsConnection:
+    def __init__(self, cursor: PersistMentionsCursor):
+        self._cursor = cursor
+        self.commits = 0
+
+    def cursor(self) -> PersistMentionsCursor:
+        return self._cursor
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def __enter__(self) -> "PersistMentionsConnection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+def test_persist_mentions_casts_null_embedding_to_vector_type() -> None:
+    fake_cursor = PersistMentionsCursor()
+    fake_connection = PersistMentionsConnection(fake_cursor)
+    store = BrandRadarPostgresStore(Settings())
+    store._connect = lambda *args, **kwargs: fake_connection  # type: ignore[method-assign]
+
+    result = store.persist_mentions(
+        [
+            {
+                "raw_post_id": 11,
+                "project_id": 3,
+                "relevance_score": 0.0,
+                "relevance_label": "irrelevant",
+                "sentiment_score": 0.0,
+                "sentiment_label": "neutral",
+                "has_risk_words": False,
+                "embedding": None,
+                "dedup_group_id": None,
+                "is_primary": True,
+                "processed_at": datetime.now(UTC),
+            }
+        ]
+    )
+
+    assert result["stored_count"] == 1
+    insert_query, insert_params = fake_cursor.executed[1]
+    assert "CAST(%s AS vector)" in insert_query
+    assert "WHEN %s IS NULL THEN NULL" not in insert_query
+    assert insert_params[7] is None
+    assert fake_connection.commits == 1
+
+
+class PersistMentionsRepositoryTests(unittest.TestCase):
+    def test_persist_mentions_casts_null_embedding_to_vector_type(self) -> None:
+        fake_cursor = PersistMentionsCursor()
+        fake_connection = PersistMentionsConnection(fake_cursor)
+        store = BrandRadarPostgresStore(Settings())
+        store._connect = lambda *args, **kwargs: fake_connection  # type: ignore[method-assign]
+
+        result = store.persist_mentions(
+            [
+                {
+                    "raw_post_id": 11,
+                    "project_id": 3,
+                    "relevance_score": 0.0,
+                    "relevance_label": "irrelevant",
+                    "sentiment_score": 0.0,
+                    "sentiment_label": "neutral",
+                    "has_risk_words": False,
+                    "embedding": None,
+                    "dedup_group_id": None,
+                    "is_primary": True,
+                    "processed_at": datetime.now(UTC),
+                }
+            ]
+        )
+
+        self.assertEqual(result["stored_count"], 1)
+        insert_query, insert_params = fake_cursor.executed[1]
+        self.assertIn("CAST(%s AS vector)", insert_query)
+        self.assertNotIn("WHEN %s IS NULL THEN NULL", insert_query)
+        self.assertIsNone(insert_params[7])
+        self.assertEqual(fake_connection.commits, 1)
