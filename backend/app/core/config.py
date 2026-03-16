@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     ml_worker_idle_sleep_seconds: float = 2.0
     ml_dedup_threshold: float = 0.15
     ml_cluster_threshold: float = 0.22
+    backend_metrics_window_seconds: int = 60
+    backend_metrics_log_interval_seconds: float = 10.0
+    backend_slow_request_threshold_ms: float = 1_000.0
     api_title: str = "BrandRadar API"
     api_version: str = "0.1.0"
     backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
