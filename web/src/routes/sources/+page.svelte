@@ -82,8 +82,8 @@
 <div class="container mx-auto max-w-3xl py-4">
 	<Heading>Источники и статус сбора</Heading>
 
-	<div class="mb-4 p-3 rounded-lg border bg-card">
-		<div class="flex items-center gap-2 mb-2">
+	<div class="mb-4 rounded-lg border bg-card p-3">
+		<div class="mb-2 flex items-center gap-2">
 			<span
 				class={getHealthColor(healthStatus)}
 				class:w-3={true}
@@ -94,20 +94,31 @@
 				>Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span
 			>
 		</div>
-		<div class="flex gap-4 text-sm text-muted-foreground">
+		<div class="mb-2 flex gap-4 text-sm text-muted-foreground">
 			<div class="flex items-center gap-1">
-				<Database class="w-4 h-4" />
+				<Database class="h-4 w-4" />
 				<span>PostgreSQL: {health?.postgres ? tDbStatus(health.postgres) : '?'}</span>
 			</div>
 			<div class="flex items-center gap-1">
-				<Server class="w-4 h-4" />
+				<Server class="h-4 w-4" />
 				<span>ClickHouse: {health?.clickhouse ? tDbStatus(health.clickhouse) : '?'}</span>
 			</div>
 			<div class="flex items-center gap-1">
-				<BrainCircuit class="w-4 h-4" />
+				<BrainCircuit class="h-4 w-4" />
+				<span>ML сервис: {health?.ml ? tDbStatus(health.ml) : '?'}</span>
+			</div>
+		</div>
+		<div class="flex gap-4 text-sm text-muted-foreground">
+			<div class="flex items-center gap-1">
+				<BrainCircuit class="h-4 w-4" />
 				<span>ML очередь: {health?.ml_queue_size ?? '?'}</span>
 			</div>
 		</div>
+		{#if health?.ml_error}
+			<div class="mt-2 text-sm text-destructive">
+				ML ошибка: {health.ml_error}
+			</div>
+		{/if}
 	</div>
 
 	<section>
@@ -115,7 +126,7 @@
 			<div class="space-y-3">
 				{#each data.sources as source (source.id)}
 					{@const status = getSourceStatus(source)}
-					<div class="flex items-center justify-between p-4 border rounded-lg">
+					<div class="flex items-center justify-between rounded-lg border p-4">
 						<div class="flex items-center gap-4">
 							<div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
 								{#if source.source_type === 'telegram'}

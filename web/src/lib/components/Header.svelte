@@ -9,7 +9,15 @@
 	let {
 		health = null
 	}: {
-		health?: { status: string; postgres: string; clickhouse: string; ml_queue_size: number } | null;
+		health?: {
+			status: string;
+			postgres: string;
+			clickhouse: string;
+			ml: string;
+			ml_url: string;
+			ml_error: string | null;
+			ml_queue_size: number;
+		} | null;
 	} = $props();
 
 	const links = $derived([
