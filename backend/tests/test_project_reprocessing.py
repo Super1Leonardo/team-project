@@ -207,7 +207,7 @@ class _RecordingProjectWorker:
 
 
 class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
-    async def test_update_project_reprocesses_feed_when_tracked_words_change(self) -> None:
+    async def test_update_project_reprocesses_feed_in_background_when_tracked_words_change(self) -> None:
         store = _ProjectUpdateStore()
         worker = _RecordingProjectWorker()
         service = BrandRadarService(
@@ -215,6 +215,10 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
                 postgres_store=store,
                 ml_worker=worker,
             )
+        )
+        scheduled_calls: list[tuple[int, bool]] = []
+        service._schedule_project_reprocessing = (  # type: ignore[method-assign]
+            lambda project_id, reset_mentions: scheduled_calls.append((project_id, reset_mentions))
         )
 
         result = await service.update_project(
@@ -227,8 +231,9 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result["keywords"], ["brand", "brand radar"])
-        self.assertEqual(store.reset_calls, [7])
-        self.assertEqual(worker.calls, [7])
+        self.assertEqual(store.reset_calls, [])
+        self.assertEqual(worker.calls, [])
+        self.assertEqual(scheduled_calls, [(7, True)])
 
     async def test_update_project_skips_reprocessing_when_only_name_changes(self) -> None:
         store = _ProjectUpdateStore()
@@ -250,7 +255,7 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.failed_requeue_calls, [])
         self.assertEqual(worker.calls, [])
 
-    async def test_update_project_keeps_project_updated_when_reprocessing_fails(self) -> None:
+    async def test_run_project_reprocessing_keeps_going_when_worker_fails(self) -> None:
         store = _ProjectUpdateStore()
         worker = _RecordingProjectWorker(should_fail=True)
         service = BrandRadarService(
@@ -260,19 +265,38 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        result = await service.update_project(
-            7,
-            ProjectUpdateRequest(
-                keywords=["brand", "brand radar"],
-            ),
-        )
+        await service._run_project_reprocessing(7, reset_mentions=True)
 
-        self.assertEqual(result["keywords"], ["brand", "brand radar"])
         self.assertEqual(store.reset_calls, [7])
         self.assertEqual(store.failed_requeue_calls, [])
         self.assertEqual(worker.calls, [7])
 
-    async def test_update_project_retries_failed_posts_even_when_filters_do_not_change(self) -> None:
+    async def test_update_project_retries_failed_posts_in_background_even_when_filters_do_not_change(self) -> None:
+        store = _ProjectUpdateStore(failed_count=3, requeued_failed_count=3)
+        worker = _RecordingProjectWorker()
+        service = BrandRadarService(
+            SimpleNamespace(
+                postgres_store=store,
+                ml_worker=worker,
+            )
+        )
+        scheduled_calls: list[tuple[int, bool]] = []
+        service._schedule_project_reprocessing = (  # type: ignore[method-assign]
+            lambda project_id, reset_mentions: scheduled_calls.append((project_id, reset_mentions))
+        )
+
+        result = await service.update_project(
+            7,
+            ProjectUpdateRequest(name="Brand Radar 2"),
+        )
+
+        self.assertEqual(result["name"], "Brand Radar 2")
+        self.assertEqual(store.reset_calls, [])
+        self.assertEqual(store.failed_requeue_calls, [])
+        self.assertEqual(worker.calls, [])
+        self.assertEqual(scheduled_calls, [(7, False)])
+
+    async def test_run_project_reprocessing_requeues_failed_posts_before_ml(self) -> None:
         store = _ProjectUpdateStore(failed_count=3, requeued_failed_count=3)
         worker = _RecordingProjectWorker()
         service = BrandRadarService(
@@ -282,12 +306,8 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        result = await service.update_project(
-            7,
-            ProjectUpdateRequest(name="Brand Radar 2"),
-        )
+        await service._run_project_reprocessing(7, reset_mentions=False)
 
-        self.assertEqual(result["name"], "Brand Radar 2")
         self.assertEqual(store.reset_calls, [])
         self.assertEqual(store.failed_requeue_calls, [7])
         self.assertEqual(worker.calls, [7])
@@ -298,6 +318,7 @@ class _ProjectScopedStore:
         now = datetime.now(UTC)
         self.fetch_calls: list[int | None] = []
         self.persisted_rows: list[dict] = []
+        self.failed_rows: list[dict] = []
         self.pending_rows: list[list[dict]] = [
             [
                 {
@@ -350,6 +371,13 @@ class _ProjectScopedStore:
 
     def mark_mentions_clickhouse_synced(self, mention_ids: list[int]) -> int:
         return len(mention_ids)
+
+    def mark_raw_posts_ml_failed(self, failures: list[dict]) -> int:
+        self.failed_rows.extend(failures)
+        return len(failures)
+
+    def find_similar_clusters(self, project_id: int, embedding: list[float]) -> list[dict]:
+        return []
 
     def find_similar_mentions(self, project_id: int, embedding: list[float]) -> list[dict]:
         return []

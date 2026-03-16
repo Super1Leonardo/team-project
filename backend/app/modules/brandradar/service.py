@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 class BrandRadarService:
     def __init__(self, runtime: ArchitectureRuntime):
         self.runtime = runtime
+        self._project_reprocessing_tasks: dict[int, asyncio.Task[None]] = {}
+        self._pending_project_reprocessing: dict[int, bool] = {}
 
     async def list_projects(self) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self.runtime.postgres_store.list_projects)
@@ -55,42 +57,11 @@ class BrandRadarService:
             if processing_stats["failed"] <= 0:
                 return updated_project
 
-            requeued_failed_posts = await asyncio.to_thread(
-                self.runtime.postgres_store.requeue_failed_raw_posts_for_reprocessing,
-                project_id,
-            )
-            if requeued_failed_posts <= 0:
-                return updated_project
+            self._schedule_project_reprocessing(project_id, reset_mentions=False)
+            return updated_project
 
-            try:
-                await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
-            except Exception:
-                logger.exception(
-                    "Project %s was updated, failed raw posts were requeued, but immediate reprocessing failed.",
-                    project_id,
-                )
-
-            return await asyncio.to_thread(
-                self.runtime.postgres_store.get_project,
-                project_id,
-            )
-
-        await asyncio.to_thread(
-            self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
-            project_id,
-        )
-        try:
-            await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
-        except Exception:
-            logger.exception(
-                "Project %s was updated, mentions were requeued, but immediate reprocessing failed.",
-                project_id,
-            )
-
-        return await asyncio.to_thread(
-            self.runtime.postgres_store.get_project,
-            project_id,
-        )
+        self._schedule_project_reprocessing(project_id, reset_mentions=True)
+        return updated_project
 
     async def delete_project(self, project_id: int) -> None:
         await asyncio.to_thread(self.runtime.postgres_store.delete_project, project_id)
@@ -483,3 +454,83 @@ class BrandRadarService:
             task.result()
         except Exception:
             logger.exception("Background collector task failed.")
+
+    def _schedule_project_reprocessing(self, project_id: int, *, reset_mentions: bool) -> None:
+        existing_task = self._project_reprocessing_tasks.get(project_id)
+        if existing_task is not None and not existing_task.done():
+            self._pending_project_reprocessing[project_id] = (
+                self._pending_project_reprocessing.get(project_id, False) or reset_mentions
+            )
+            logger.info(
+                "Project %s reprocessing is already running; queued a follow-up run.",
+                project_id,
+            )
+            return
+
+        task = asyncio.create_task(
+            self._run_project_reprocessing(project_id, reset_mentions=reset_mentions),
+            name=f"project-reprocessing-{project_id}",
+        )
+        self._project_reprocessing_tasks[project_id] = task
+        task.add_done_callback(
+            lambda done_task, project_id=project_id: self._on_project_reprocessing_done(
+                project_id,
+                done_task,
+            )
+        )
+
+    async def _run_project_reprocessing(
+        self,
+        project_id: int,
+        *,
+        reset_mentions: bool,
+    ) -> None:
+        should_reset_mentions = reset_mentions
+
+        while True:
+            should_drain_queue = False
+            if should_reset_mentions:
+                await asyncio.to_thread(
+                    self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
+                    project_id,
+                )
+                should_drain_queue = True
+            else:
+                processing_stats = await asyncio.to_thread(
+                    self.runtime.postgres_store.get_raw_post_processing_stats,
+                    project_id,
+                )
+                if processing_stats["failed"] > 0:
+                    requeued_failed_posts = await asyncio.to_thread(
+                        self.runtime.postgres_store.requeue_failed_raw_posts_for_reprocessing,
+                        project_id,
+                    )
+                    should_drain_queue = requeued_failed_posts > 0
+
+            if should_drain_queue:
+                try:
+                    await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
+                except Exception:
+                    logger.exception(
+                        "Project %s was updated and requeued, but background reprocessing failed.",
+                        project_id,
+                    )
+
+            pending_reset = self._pending_project_reprocessing.pop(project_id, None)
+            if pending_reset is None:
+                break
+            should_reset_mentions = pending_reset
+
+    def _on_project_reprocessing_done(
+        self,
+        project_id: int,
+        task: asyncio.Task[None],
+    ) -> None:
+        self._project_reprocessing_tasks.pop(project_id, None)
+        try:
+            task.result()
+        except Exception:
+            logger.exception(
+                "Background project reprocessing task failed for project %s.",
+                project_id,
+            )
