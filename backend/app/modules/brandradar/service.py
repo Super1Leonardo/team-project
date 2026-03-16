@@ -180,7 +180,7 @@ class BrandRadarService:
                 "synced_count": 0 if persist else None,
                 "projects": {},
                 "persisted": persist,
-                "remote_response": {"items": []},
+                "remote_response": {"results": []},
             }
 
         remote_response = await self.runtime.external_ml_gateway.predict(items)

@@ -238,7 +238,7 @@ class MLResultWriteItem(BaseModel):
     sentiment_score: float
     sentiment_label: SentimentLabel
     has_risk_words: bool = False
-    embedding: list[float] = Field(min_length=384, max_length=384)
+    embedding: list[float] | None = Field(default=None, min_length=384, max_length=384)
     dedup_group_id: int | None = None
     is_primary: bool = True
     processed_at: datetime | None = None

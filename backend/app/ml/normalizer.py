@@ -189,9 +189,9 @@ class MLResultNormalizer:
         *,
         project_id: int,
         relevance_label: str,
-        embedding: list[float],
+        embedding: list[float] | None,
     ) -> tuple[int | None, bool]:
-        if relevance_label != "relevant":
+        if relevance_label != "relevant" or embedding is None:
             return None, True
 
         candidates = self.store.find_similar_mentions(project_id, embedding)
@@ -258,7 +258,9 @@ class MLResultNormalizer:
         return "neutral"
 
     @staticmethod
-    def _normalize_embedding(embedding: Any) -> list[float]:
+    def _normalize_embedding(embedding: Any) -> list[float] | None:
+        if embedding is None:
+            return None
         if isinstance(embedding, list) and len(embedding) == 384:
             try:
                 return [float(value) for value in embedding]

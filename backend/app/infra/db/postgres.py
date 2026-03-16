@@ -148,7 +148,7 @@ class BrandRadarPostgresStore:
                             sentiment_score DOUBLE PRECISION NOT NULL,
                             sentiment_label TEXT NOT NULL,
                             has_risk_words BOOLEAN NOT NULL DEFAULT FALSE,
-                            embedding VECTOR(384) NOT NULL,
+                            embedding VECTOR(384),
                             dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
                             is_primary BOOLEAN NOT NULL DEFAULT TRUE,
                             processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -172,6 +172,12 @@ class BrandRadarPostgresStore:
                         """
                         ALTER TABLE mentions
                         ADD COLUMN IF NOT EXISTS clickhouse_synced_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ALTER COLUMN embedding DROP NOT NULL
                         """
                     )
                     cur.execute(
@@ -812,6 +818,7 @@ class BrandRadarPostgresStore:
                     (m.embedding <=> CAST(%s AS vector)) AS distance
                 FROM mentions m
                 WHERE m.project_id = %s
+                  AND m.embedding IS NOT NULL
                   AND m.processed_at >= %s
                 ORDER BY m.embedding <=> CAST(%s AS vector)
                 LIMIT %s
@@ -928,7 +935,12 @@ class BrandRadarPostgresStore:
 
             for item in mention_rows:
                 processed_at = item.get("processed_at") or datetime.now(UTC)
-                embedding_literal = self._vector_literal(item["embedding"])
+                embedding = item.get("embedding")
+                embedding_literal = (
+                    self._vector_literal(embedding)
+                    if embedding is not None
+                    else None
+                )
                 raw_post = raw_posts[int(item["raw_post_id"])]
                 project_id = int(item.get("project_id", raw_post["project_id"]))
 
@@ -949,7 +961,10 @@ class BrandRadarPostgresStore:
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
-                        CAST(%s AS vector),
+                        CASE
+                            WHEN %s IS NULL THEN NULL
+                            ELSE CAST(%s AS vector)
+                        END,
                         %s, %s, %s
                     )
                     ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -985,6 +1000,7 @@ class BrandRadarPostgresStore:
                         item["sentiment_score"],
                         item["sentiment_label"],
                         item["has_risk_words"],
+                        embedding_literal,
                         embedding_literal,
                         item.get("dedup_group_id"),
                         item["is_primary"],

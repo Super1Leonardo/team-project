@@ -108,6 +108,7 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["relevance_label"], "relevant")
         self.assertEqual(normalized[0]["relevance_score"], 0.91)
         self.assertTrue(normalized[0]["has_risk_words"])
+        self.assertIsNone(normalized[0]["embedding"])
 
         self.assertEqual(normalized[1]["relevance_label"], "irrelevant")
         self.assertEqual(normalized[1]["relevance_score"], 0.0)
@@ -144,10 +145,9 @@ class MLResultNormalizerTests(unittest.TestCase):
     @staticmethod
     def _remote_result() -> dict[str, Any]:
         return {
-            "relevance_label": "relevant",
+            "is_relevant": True,
             "relevance_score": 0.91,
-            "sentiment_label": "neutral",
+            "sentiment": "neutral",
             "sentiment_score": 0.11,
             "has_risk_words": False,
-            "embedding": [0.01] * 384,
         }
