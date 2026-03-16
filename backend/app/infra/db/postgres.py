@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime
 from datetime import timedelta
@@ -252,60 +253,102 @@ class BrandRadarPostgresStore:
 
     def bootstrap_default_project_and_sources(self) -> None:
         with self._connect(autocommit=False) as conn, conn.cursor() as cur:
-            cur.execute("SELECT id FROM projects ORDER BY id ASC LIMIT 1")
-            existing_project = cur.fetchone()
-            if existing_project is not None:
-                return
+            project_id, project_created = self._ensure_bootstrap_project(cur)
+            inserted_sources = self._ensure_bootstrap_sources(cur, project_id)
+            if project_created or inserted_sources > 0:
+                conn.commit()
 
+    def _ensure_bootstrap_project(self, cur: psycopg.Cursor) -> tuple[int, bool]:
+        cur.execute(
+            """
+            SELECT id
+            FROM projects
+            WHERE name = %s
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (DEFAULT_BOOTSTRAP_PROJECT["name"],),
+        )
+        project_row = cur.fetchone()
+        if project_row is not None:
+            return int(project_row["id"]), False
+
+        cur.execute(
+            """
+            INSERT INTO projects (
+                name,
+                keywords,
+                exclude_keywords,
+                risk_words
+            )
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                DEFAULT_BOOTSTRAP_PROJECT["name"],
+                DEFAULT_BOOTSTRAP_PROJECT["keywords"],
+                DEFAULT_BOOTSTRAP_PROJECT["exclude_keywords"],
+                DEFAULT_BOOTSTRAP_PROJECT["risk_words"],
+            ),
+        )
+        project_row = cur.fetchone()
+        if project_row is None:
+            raise RuntimeError("Failed to create bootstrap project.")
+        return int(project_row["id"]), True
+
+    def _ensure_bootstrap_sources(self, cur: psycopg.Cursor, project_id: int) -> int:
+        cur.execute(
+            """
+            SELECT id, source_type, source_config
+            FROM sources
+            WHERE project_id = %s
+            ORDER BY id ASC
+            """,
+            (project_id,),
+        )
+        existing_sources = {
+            (
+                row["source_type"],
+                self._source_config_key(row["source_config"]),
+            )
+            for row in cur.fetchall()
+        }
+        inserted_sources = 0
+
+        for source in DEFAULT_BOOTSTRAP_SOURCES:
+            normalized_source_config = self._normalize_source_config(
+                source["source_type"],
+                source["source_config"],
+            )
+            source_key = (
+                source["source_type"],
+                self._source_config_key(normalized_source_config),
+            )
+            if source_key in existing_sources:
+                continue
             cur.execute(
                 """
-                INSERT INTO projects (
-                    name,
-                    keywords,
-                    exclude_keywords,
-                    risk_words
+                INSERT INTO sources (
+                    project_id,
+                    source_type,
+                    source_config,
+                    is_active,
+                    poll_interval_s
                 )
-                VALUES (%s, %s, %s, %s)
-                RETURNING id
+                VALUES (%s, %s, %s, %s, %s)
                 """,
                 (
-                    DEFAULT_BOOTSTRAP_PROJECT["name"],
-                    DEFAULT_BOOTSTRAP_PROJECT["keywords"],
-                    DEFAULT_BOOTSTRAP_PROJECT["exclude_keywords"],
-                    DEFAULT_BOOTSTRAP_PROJECT["risk_words"],
+                    project_id,
+                    source["source_type"],
+                    Jsonb(normalized_source_config),
+                    source["is_active"],
+                    source["poll_interval_s"],
                 ),
             )
-            project_row = cur.fetchone()
-            if project_row is None:
-                raise RuntimeError("Failed to create bootstrap project.")
+            existing_sources.add(source_key)
+            inserted_sources += 1
 
-            project_id = int(project_row["id"])
-            for source in DEFAULT_BOOTSTRAP_SOURCES:
-                normalized_source_config = self._normalize_source_config(
-                    source["source_type"],
-                    source["source_config"],
-                )
-                cur.execute(
-                    """
-                    INSERT INTO sources (
-                        project_id,
-                        source_type,
-                        source_config,
-                        is_active,
-                        poll_interval_s
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        project_id,
-                        source["source_type"],
-                        Jsonb(normalized_source_config),
-                        source["is_active"],
-                        source["poll_interval_s"],
-                    ),
-                )
-
-            conn.commit()
+        return inserted_sources
 
     def ping(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:
@@ -363,8 +406,12 @@ class BrandRadarPostgresStore:
                         WHERE m.project_id = p.id
                     ) AS mentions_count
                 FROM projects p
-                ORDER BY p.created_at DESC, p.id DESC
-                """
+                ORDER BY
+                    CASE WHEN p.name = %s THEN 0 ELSE 1 END,
+                    p.created_at DESC,
+                    p.id DESC
+                """,
+                (DEFAULT_BOOTSTRAP_PROJECT["name"],),
             )
             rows = cur.fetchall()
 
@@ -1209,6 +1256,50 @@ class BrandRadarPostgresStore:
 
         return [dict(row) for row in rows]
 
+    def get_raw_post_processing_stats(self, project_id: int | None = None) -> dict[str, int]:
+        params: list[Any] = []
+        where_clause = ""
+        if project_id is not None:
+            where_clause = "WHERE s.project_id = %s"
+            params.append(project_id)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE rp.ml_processed = TRUE) AS processed,
+                    COUNT(*) FILTER (
+                        WHERE rp.ml_processed = FALSE
+                          AND rp.ml_failed_at IS NULL
+                    ) AS pending,
+                    COUNT(*) FILTER (
+                        WHERE rp.ml_processed = FALSE
+                          AND rp.ml_failed_at IS NOT NULL
+                    ) AS failed
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                {where_clause}
+                """,
+                params,
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            return {
+                "total": 0,
+                "processed": 0,
+                "pending": 0,
+                "failed": 0,
+            }
+
+        return {
+            "total": int(row["total"] or 0),
+            "processed": int(row["processed"] or 0),
+            "pending": int(row["pending"] or 0),
+            "failed": int(row["failed"] or 0),
+        }
+
     def list_mentions(
         self,
         project_id: int,
@@ -1410,6 +1501,10 @@ class BrandRadarPostgresStore:
     @staticmethod
     def _vector_literal(embedding: list[float]) -> str:
         return "[" + ",".join(f"{value:.10f}" for value in embedding) + "]"
+
+    @staticmethod
+    def _source_config_key(source_config: dict[str, Any]) -> str:
+        return json.dumps(source_config, sort_keys=True, ensure_ascii=True)
 
     def _ensure_project_exists(self, project_id: int) -> None:
         with self._connect() as conn, conn.cursor() as cur:
