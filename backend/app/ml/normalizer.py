@@ -69,6 +69,10 @@ class MLResultNormalizer:
         queue_items: list[dict[str, Any]],
         remote_results: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
+        self._validate_result_mapping(
+            queue_items=queue_items,
+            remote_results=remote_results,
+        )
         queue_by_raw_post_id = {
             int(item["raw_post_id"]): item
             for item in queue_items
@@ -82,11 +86,11 @@ class MLResultNormalizer:
                 remote_item=result,
                 index=index,
             )
-            relevance_label = self._normalize_relevance_label(result)
-            relevance_score = self._normalize_float(
+            ml_relevance_label = self._normalize_relevance_label(result)
+            ml_relevance_score = self._normalize_float(
                 result,
                 keys=("relevance_score", "score", "relevance_probability"),
-                default=1.0 if relevance_label == "relevant" else 0.0,
+                default=1.0 if ml_relevance_label == "relevant" else 0.0,
             )
             sentiment_label = self._normalize_sentiment_label(result)
             sentiment_score = self._normalize_float(
@@ -94,11 +98,22 @@ class MLResultNormalizer:
                 keys=("sentiment_score", "sentiment_value", "polarity"),
                 default=0.0,
             )
-            has_risk_words = bool(
-                result.get(
-                    "has_risk_words",
-                    self._contains_any(queue_item["text"], queue_item["risk_words"]),
-                )
+            has_keyword_match = self._matches_keywords(
+                queue_item["text"],
+                queue_item["keywords"],
+            )
+            has_excluded_match = self._contains_any(
+                queue_item["text"],
+                queue_item["exclude_keywords"],
+            )
+            relevance_label = ml_relevance_label
+            relevance_score = ml_relevance_score
+            if has_excluded_match or not has_keyword_match:
+                relevance_label = "irrelevant"
+                relevance_score = 0.0
+            has_risk_words = self._contains_any(
+                queue_item["text"],
+                queue_item["risk_words"],
             )
             embedding = self._normalize_embedding(result.get("embedding"))
             dedup_group_id, is_primary = self._assign_dedup(
@@ -124,6 +139,27 @@ class MLResultNormalizer:
             )
 
         return normalized_rows
+
+    @staticmethod
+    def _validate_result_mapping(
+        *,
+        queue_items: list[dict[str, Any]],
+        remote_results: list[dict[str, Any]],
+    ) -> None:
+        if not remote_results:
+            if queue_items:
+                raise ExternalMLResponseError(
+                    "External ML returned no results for queued items without raw_post_id mapping."
+                )
+            return
+
+        if all(result.get("raw_post_id") is not None for result in remote_results):
+            return
+
+        if len(remote_results) != len(queue_items):
+            raise ExternalMLResponseError(
+                "External ML returned a different number of results than queued items without raw_post_id mapping."
+            )
 
     @staticmethod
     def _resolve_queue_item(
@@ -153,9 +189,9 @@ class MLResultNormalizer:
         *,
         project_id: int,
         relevance_label: str,
-        embedding: list[float],
+        embedding: list[float] | None,
     ) -> tuple[int | None, bool]:
-        if relevance_label != "relevant":
+        if relevance_label != "relevant" or embedding is None:
             return None, True
 
         candidates = self.store.find_similar_mentions(project_id, embedding)
@@ -222,7 +258,9 @@ class MLResultNormalizer:
         return "neutral"
 
     @staticmethod
-    def _normalize_embedding(embedding: Any) -> list[float]:
+    def _normalize_embedding(embedding: Any) -> list[float] | None:
+        if embedding is None:
+            return None
         if isinstance(embedding, list) and len(embedding) == 384:
             try:
                 return [float(value) for value in embedding]
@@ -247,3 +285,9 @@ class MLResultNormalizer:
     def _contains_any(text: str, words: list[str]) -> bool:
         normalized = " ".join(text.casefold().split())
         return any(" ".join(word.casefold().split()) in normalized for word in words)
+
+    @classmethod
+    def _matches_keywords(cls, text: str, keywords: list[str]) -> bool:
+        if not keywords:
+            return True
+        return cls._contains_any(text, keywords)

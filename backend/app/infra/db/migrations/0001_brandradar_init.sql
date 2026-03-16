@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS mentions (
     sentiment_score DOUBLE PRECISION NOT NULL,
     sentiment_label TEXT NOT NULL,
     has_risk_words BOOLEAN NOT NULL DEFAULT FALSE,
-    embedding VECTOR(384) NOT NULL,
+    embedding VECTOR(384),
     dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
     is_primary BOOLEAN NOT NULL DEFAULT TRUE,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -12,7 +12,7 @@ from backend.app.ml.ml_gateway import ExternalMLGateway
 
 class _RecordingAsyncClient:
     instances: list["_RecordingAsyncClient"] = []
-    response = httpx.Response(200, json={"items": []})
+    response = httpx.Response(200, json={"results": []})
 
     def __init__(self, *, timeout: httpx.Timeout):
         self.timeout = timeout
@@ -40,17 +40,27 @@ class ExternalMLGatewayTests(unittest.TestCase):
         )
         gateway = ExternalMLGateway(settings)
         _RecordingAsyncClient.instances.clear()
-        _RecordingAsyncClient.response = httpx.Response(200, json={"items": []})
+        _RecordingAsyncClient.response = httpx.Response(200, json={"results": []})
 
         with patch("backend.app.ml.ml_gateway.httpx.AsyncClient", _RecordingAsyncClient):
-            asyncio.run(gateway.predict([{"raw_post_id": 1}]))
+            asyncio.run(
+                gateway.predict(
+                    [
+                        {
+                            "raw_post_id": 1,
+                            "text": "brand update",
+                            "keywords": ["brand"],
+                        }
+                    ]
+                )
+            )
 
         client = _RecordingAsyncClient.instances[-1]
         self.assertEqual(client.timeout.connect, 3)
         self.assertEqual(client.timeout.read, 60)
         self.assertEqual(
             client.post_calls,
-            [("http://ml.example/predict", {"items": [{"raw_post_id": 1}]})],
+            [("http://ml.example/predict", {"texts": ["brand update"]})],
         )
 
     def test_health_probe_uses_short_timeout_and_returns_healthy_on_422(self) -> None:
@@ -64,7 +74,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
         _RecordingAsyncClient.instances.clear()
         _RecordingAsyncClient.response = httpx.Response(
             422,
-            json={"detail": "items required"},
+            json={"detail": "texts required"},
         )
 
         with patch("backend.app.ml.ml_gateway.httpx.AsyncClient", _RecordingAsyncClient):
@@ -75,7 +85,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
         self.assertEqual(client.timeout.read, 2)
         self.assertEqual(
             client.post_calls,
-            [("http://ml.example/predict", {"items": []})],
+            [("http://ml.example/predict", {"texts": []})],
         )
         self.assertEqual(
             result,

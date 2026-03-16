@@ -25,6 +25,32 @@ WEBSITE_SELECTOR_KEYS = (
     "detail_paragraph_selector",
     "original_link_selector",
 )
+DEFAULT_BOOTSTRAP_PROJECT = {
+    "name": "Brand Radar",
+    "keywords": [],
+    "exclude_keywords": [],
+    "risk_words": [],
+}
+DEFAULT_BOOTSTRAP_SOURCES = (
+    {
+        "source_type": "telegram",
+        "source_config": {"channel": "https://t.me/brand_radar_case"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+    {
+        "source_type": "website",
+        "source_config": {"url": "http://web-brandradar.ingress.prodcontest.com/"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+    {
+        "source_type": "rss",
+        "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+)
 
 
 class BrandRadarPostgresStore:
@@ -122,7 +148,7 @@ class BrandRadarPostgresStore:
                             sentiment_score DOUBLE PRECISION NOT NULL,
                             sentiment_label TEXT NOT NULL,
                             has_risk_words BOOLEAN NOT NULL DEFAULT FALSE,
-                            embedding VECTOR(384) NOT NULL,
+                            embedding VECTOR(384),
                             dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
                             is_primary BOOLEAN NOT NULL DEFAULT TRUE,
                             processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -146,6 +172,12 @@ class BrandRadarPostgresStore:
                         """
                         ALTER TABLE mentions
                         ADD COLUMN IF NOT EXISTS clickhouse_synced_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ALTER COLUMN embedding DROP NOT NULL
                         """
                     )
                     cur.execute(
@@ -207,6 +239,7 @@ class BrandRadarPostgresStore:
                         ON events (project_id, created_at DESC)
                         """
                     )
+                self.bootstrap_default_project_and_sources()
                 return
             except psycopg.OperationalError as exc:
                 last_error = exc
@@ -216,6 +249,63 @@ class BrandRadarPostgresStore:
 
         if last_error is not None:
             raise last_error
+
+    def bootstrap_default_project_and_sources(self) -> None:
+        with self._connect(autocommit=False) as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM projects ORDER BY id ASC LIMIT 1")
+            existing_project = cur.fetchone()
+            if existing_project is not None:
+                return
+
+            cur.execute(
+                """
+                INSERT INTO projects (
+                    name,
+                    keywords,
+                    exclude_keywords,
+                    risk_words
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    DEFAULT_BOOTSTRAP_PROJECT["name"],
+                    DEFAULT_BOOTSTRAP_PROJECT["keywords"],
+                    DEFAULT_BOOTSTRAP_PROJECT["exclude_keywords"],
+                    DEFAULT_BOOTSTRAP_PROJECT["risk_words"],
+                ),
+            )
+            project_row = cur.fetchone()
+            if project_row is None:
+                raise RuntimeError("Failed to create bootstrap project.")
+
+            project_id = int(project_row["id"])
+            for source in DEFAULT_BOOTSTRAP_SOURCES:
+                normalized_source_config = self._normalize_source_config(
+                    source["source_type"],
+                    source["source_config"],
+                )
+                cur.execute(
+                    """
+                    INSERT INTO sources (
+                        project_id,
+                        source_type,
+                        source_config,
+                        is_active,
+                        poll_interval_s
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        project_id,
+                        source["source_type"],
+                        Jsonb(normalized_source_config),
+                        source["is_active"],
+                        source["poll_interval_s"],
+                    ),
+                )
+
+            conn.commit()
 
     def ping(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:
@@ -728,6 +818,7 @@ class BrandRadarPostgresStore:
                     (m.embedding <=> CAST(%s AS vector)) AS distance
                 FROM mentions m
                 WHERE m.project_id = %s
+                  AND m.embedding IS NOT NULL
                   AND m.processed_at >= %s
                 ORDER BY m.embedding <=> CAST(%s AS vector)
                 LIMIT %s
@@ -844,7 +935,12 @@ class BrandRadarPostgresStore:
 
             for item in mention_rows:
                 processed_at = item.get("processed_at") or datetime.now(UTC)
-                embedding_literal = self._vector_literal(item["embedding"])
+                embedding = item.get("embedding")
+                embedding_literal = (
+                    self._vector_literal(embedding)
+                    if embedding is not None
+                    else None
+                )
                 raw_post = raw_posts[int(item["raw_post_id"])]
                 project_id = int(item.get("project_id", raw_post["project_id"]))
 
@@ -865,7 +961,10 @@ class BrandRadarPostgresStore:
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
-                        CAST(%s AS vector),
+                        CASE
+                            WHEN %s IS NULL THEN NULL
+                            ELSE CAST(%s AS vector)
+                        END,
                         %s, %s, %s
                     )
                     ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -901,6 +1000,7 @@ class BrandRadarPostgresStore:
                         item["sentiment_score"],
                         item["sentiment_label"],
                         item["has_risk_words"],
+                        embedding_literal,
                         embedding_literal,
                         item.get("dedup_group_id"),
                         item["is_primary"],
