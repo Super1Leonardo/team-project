@@ -173,6 +173,11 @@ class CollectorSourceStatus(BaseModel):
 
 class CollectorStatusResponse(BaseModel):
     ml_queue_size: int
+    raw_posts_total: int
+    raw_posts_processed: int
+    raw_posts_pending: int
+    raw_posts_failed: int
+    processing_status: Literal["idle", "processing", "ready"]
     sources: list[CollectorSourceStatus]
 
 

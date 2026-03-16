@@ -147,11 +147,26 @@ class BrandRadarService:
                 }
             )
 
-        queue_size = await asyncio.to_thread(
-            self.runtime.postgres_store.count_unprocessed_raw_posts
+        processing_stats = await asyncio.to_thread(
+            self.runtime.postgres_store.get_raw_post_processing_stats,
+            project_id,
         )
+        queue_size = processing_stats["pending"]
+
+        if processing_stats["total"] == 0:
+            processing_status = "idle"
+        elif processing_stats["pending"] > 0:
+            processing_status = "processing"
+        else:
+            processing_status = "ready"
+
         return {
             "ml_queue_size": queue_size,
+            "raw_posts_total": processing_stats["total"],
+            "raw_posts_processed": processing_stats["processed"],
+            "raw_posts_pending": processing_stats["pending"],
+            "raw_posts_failed": processing_stats["failed"],
+            "processing_status": processing_status,
             "sources": source_rows,
         }
 
