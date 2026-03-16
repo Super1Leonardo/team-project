@@ -31,13 +31,40 @@ class BrandRadarService:
         )
 
     async def update_project(self, project_id: int, payload) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        existing_project = await asyncio.to_thread(
+            self.runtime.postgres_store.get_project,
+            project_id,
+        )
+        updated_project = await asyncio.to_thread(
             self.runtime.postgres_store.update_project,
             project_id,
             name=payload.name,
             keywords=payload.keywords,
             exclude_keywords=payload.exclude_keywords,
             risk_words=payload.risk_words,
+        )
+        requires_feed_refresh = any(
+            existing_project[key] != updated_project[key]
+            for key in ("keywords", "exclude_keywords", "risk_words")
+        )
+        if not requires_feed_refresh:
+            return updated_project
+
+        await asyncio.to_thread(
+            self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
+            project_id,
+        )
+        try:
+            await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
+        except Exception:
+            logger.exception(
+                "Project %s was updated, mentions were requeued, but immediate reprocessing failed.",
+                project_id,
+            )
+
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.get_project,
+            project_id,
         )
 
     async def delete_project(self, project_id: int) -> None:

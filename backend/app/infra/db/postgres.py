@@ -486,6 +486,60 @@ class BrandRadarPostgresStore:
 
         return self.get_project(project_id)
 
+    def reset_project_mentions_for_reprocessing(self, project_id: int) -> dict[str, int]:
+        self._ensure_project_exists(project_id)
+
+        with self._connect(autocommit=False) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM mentions
+                WHERE project_id = %s
+                """,
+                (project_id,),
+            )
+            deleted_mentions = int(cur.rowcount or 0)
+
+            cur.execute(
+                """
+                DELETE FROM dedup_groups
+                WHERE project_id = %s
+                """,
+                (project_id,),
+            )
+            deleted_groups = int(cur.rowcount or 0)
+
+            cur.execute(
+                """
+                UPDATE raw_posts AS rp
+                SET ml_processed = FALSE,
+                    ml_failed_at = NULL,
+                    ml_error = NULL
+                FROM sources s
+                WHERE s.id = rp.source_id
+                  AND s.project_id = %s
+                """,
+                (project_id,),
+            )
+            requeued_raw_posts = int(cur.rowcount or 0)
+
+            self._insert_event(
+                cur,
+                project_id=project_id,
+                event_type="project_mentions_requeued",
+                payload={
+                    "mentions_deleted": deleted_mentions,
+                    "dedup_groups_deleted": deleted_groups,
+                    "raw_posts_requeued": requeued_raw_posts,
+                },
+            )
+            conn.commit()
+
+        return {
+            "mentions_deleted": deleted_mentions,
+            "dedup_groups_deleted": deleted_groups,
+            "raw_posts_requeued": requeued_raw_posts,
+        }
+
     def delete_project(self, project_id: int) -> None:
         self.get_project(project_id)
         with self._connect() as conn, conn.cursor() as cur:
@@ -809,10 +863,25 @@ class BrandRadarPostgresStore:
                 },
             )
 
-    def fetch_unprocessed_raw_posts(self, limit: int = 100) -> list[dict[str, Any]]:
+    def fetch_unprocessed_raw_posts(
+        self,
+        limit: int = 100,
+        project_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = [
+            "rp.ml_processed = FALSE",
+            "rp.ml_failed_at IS NULL",
+        ]
+        params: list[Any] = []
+        if project_id is not None:
+            conditions.append("s.project_id = %s")
+            params.append(project_id)
+        params.append(limit)
+        where_clause = " AND ".join(conditions)
+
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT
                     rp.id,
                     rp.source_id,
@@ -833,12 +902,11 @@ class BrandRadarPostgresStore:
                 FROM raw_posts rp
                 JOIN sources s ON s.id = rp.source_id
                 JOIN projects p ON p.id = s.project_id
-                WHERE rp.ml_processed = FALSE
-                  AND rp.ml_failed_at IS NULL
+                WHERE {where_clause}
                 ORDER BY rp.collected_at ASC, rp.id ASC
                 LIMIT %s
                 """,
-                (limit,),
+                params,
             )
             rows = cur.fetchall()
 
@@ -1333,15 +1401,26 @@ class BrandRadarPostgresStore:
             "total": int(total_row["total"]) if total_row is not None else 0,
         }
 
-    def count_unprocessed_raw_posts(self) -> int:
+    def count_unprocessed_raw_posts(self, project_id: int | None = None) -> int:
+        conditions = [
+            "rp.ml_processed = FALSE",
+            "rp.ml_failed_at IS NULL",
+        ]
+        params: list[Any] = []
+        if project_id is not None:
+            conditions.append("s.project_id = %s")
+            params.append(project_id)
+        where_clause = " AND ".join(conditions)
+
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT COUNT(*) AS total
-                FROM raw_posts
-                WHERE ml_processed = FALSE
-                  AND ml_failed_at IS NULL
-                """
+                FROM raw_posts rp
+                JOIN sources s ON s.id = rp.source_id
+                WHERE {where_clause}
+                """,
+                params,
             )
             row = cur.fetchone()
 
