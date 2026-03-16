@@ -25,6 +25,32 @@ WEBSITE_SELECTOR_KEYS = (
     "detail_paragraph_selector",
     "original_link_selector",
 )
+DEFAULT_BOOTSTRAP_PROJECT = {
+    "name": "Brand Radar",
+    "keywords": [],
+    "exclude_keywords": [],
+    "risk_words": [],
+}
+DEFAULT_BOOTSTRAP_SOURCES = (
+    {
+        "source_type": "telegram",
+        "source_config": {"channel": "https://t.me/brand_radar_case"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+    {
+        "source_type": "website",
+        "source_config": {"url": "http://web-brandradar.ingress.prodcontest.com/"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+    {
+        "source_type": "rss",
+        "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/"},
+        "is_active": True,
+        "poll_interval_s": 300,
+    },
+)
 
 
 class BrandRadarPostgresStore:
@@ -207,6 +233,7 @@ class BrandRadarPostgresStore:
                         ON events (project_id, created_at DESC)
                         """
                     )
+                self.bootstrap_default_project_and_sources()
                 return
             except psycopg.OperationalError as exc:
                 last_error = exc
@@ -216,6 +243,63 @@ class BrandRadarPostgresStore:
 
         if last_error is not None:
             raise last_error
+
+    def bootstrap_default_project_and_sources(self) -> None:
+        with self._connect(autocommit=False) as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM projects ORDER BY id ASC LIMIT 1")
+            existing_project = cur.fetchone()
+            if existing_project is not None:
+                return
+
+            cur.execute(
+                """
+                INSERT INTO projects (
+                    name,
+                    keywords,
+                    exclude_keywords,
+                    risk_words
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    DEFAULT_BOOTSTRAP_PROJECT["name"],
+                    DEFAULT_BOOTSTRAP_PROJECT["keywords"],
+                    DEFAULT_BOOTSTRAP_PROJECT["exclude_keywords"],
+                    DEFAULT_BOOTSTRAP_PROJECT["risk_words"],
+                ),
+            )
+            project_row = cur.fetchone()
+            if project_row is None:
+                raise RuntimeError("Failed to create bootstrap project.")
+
+            project_id = int(project_row["id"])
+            for source in DEFAULT_BOOTSTRAP_SOURCES:
+                normalized_source_config = self._normalize_source_config(
+                    source["source_type"],
+                    source["source_config"],
+                )
+                cur.execute(
+                    """
+                    INSERT INTO sources (
+                        project_id,
+                        source_type,
+                        source_config,
+                        is_active,
+                        poll_interval_s
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        project_id,
+                        source["source_type"],
+                        Jsonb(normalized_source_config),
+                        source["is_active"],
+                        source["poll_interval_s"],
+                    ),
+                )
+
+            conn.commit()
 
     def ping(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:

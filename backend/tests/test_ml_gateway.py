@@ -43,14 +43,24 @@ class ExternalMLGatewayTests(unittest.TestCase):
         _RecordingAsyncClient.response = httpx.Response(200, json={"items": []})
 
         with patch("backend.app.ml.ml_gateway.httpx.AsyncClient", _RecordingAsyncClient):
-            asyncio.run(gateway.predict([{"raw_post_id": 1}]))
+            asyncio.run(
+                gateway.predict(
+                    [
+                        {
+                            "raw_post_id": 1,
+                            "text": "brand update",
+                            "keywords": ["brand"],
+                        }
+                    ]
+                )
+            )
 
         client = _RecordingAsyncClient.instances[-1]
         self.assertEqual(client.timeout.connect, 3)
         self.assertEqual(client.timeout.read, 60)
         self.assertEqual(
             client.post_calls,
-            [("http://ml.example/predict", {"items": [{"raw_post_id": 1}]})],
+            [("http://ml.example/predict", {"items": [{"text": "brand update"}]})],
         )
 
     def test_health_probe_uses_short_timeout_and_returns_healthy_on_422(self) -> None:

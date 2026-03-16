@@ -41,7 +41,9 @@ class ExternalMLGateway:
 
     async def predict(self, items: list[dict[str, Any]]) -> Any:
         payload = {
-            "items": jsonable_encoder(items),
+            "items": jsonable_encoder(
+                [{"text": item.get("text", "")} for item in items]
+            ),
         }
 
         try:
