@@ -17,6 +17,7 @@ from backend.app.modules.brandradar.schemas import (
     MentionResponse,
     MentionConfidenceThreshold,
     MentionPeriod,
+    MentionSentiment,
     ProjectCreateRequest,
     ProjectResponse,
     ProjectUpdateRequest,
@@ -481,6 +482,7 @@ async def list_mentions(
     limit: int | None = Query(default=None, ge=1, le=500),
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
+    sentiment: MentionSentiment | None = Query(default=None),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -490,6 +492,7 @@ async def list_mentions(
         page_size=effective_page_size,
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
+        sentiment_label=sentiment.value if sentiment else None,
     )
     return _envelope(
         mentions_page["items"],

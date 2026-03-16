@@ -1217,6 +1217,7 @@ class BrandRadarPostgresStore:
         page_size: int = 100,
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
+        sentiment_label: str | None = None,
     ) -> dict[str, Any]:
         conditions = ["m.project_id = %s"]
         params: list[Any] = [project_id]
@@ -1228,6 +1229,10 @@ class BrandRadarPostgresStore:
         if published_after is not None:
             conditions.append("rp.published_at >= %s")
             params.append(published_after)
+
+        if sentiment_label is not None:
+            conditions.append("m.sentiment_label = %s")
+            params.append(sentiment_label)
 
         where_clause = " AND ".join(conditions)
         offset = (page - 1) * page_size

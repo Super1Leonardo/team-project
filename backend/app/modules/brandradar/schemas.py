@@ -39,6 +39,12 @@ class MentionPeriod(str, Enum):
         return mapping[self.value]
 
 
+class MentionSentiment(str, Enum):
+    positive = "positive"
+    neutral = "neutral"
+    negative = "negative"
+
+
 class ResponseMeta(BaseModel):
     total: int | None = None
     page: int | None = None

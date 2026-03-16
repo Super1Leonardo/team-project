@@ -82,6 +82,7 @@ def test_list_mentions_filters_before_pagination() -> None:
         page_size=20,
         confidence_threshold=0.7,
         published_after=published_after,
+        sentiment_label="negative",
     )
 
     assert result["total"] == 3
@@ -94,8 +95,10 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert "COUNT(*) AS total" in count_query
     assert "m.relevance_score >= %s" in count_query
     assert "rp.published_at >= %s" in count_query
-    assert count_params == [3, 0.7, published_after]
+    assert "m.sentiment_label = %s" in count_query
+    assert count_params == [3, 0.7, published_after, "negative"]
 
     assert "LIMIT %s" in data_query
     assert "OFFSET %s" in data_query
-    assert data_params == [3, 0.7, published_after, 20, 20]
+    assert "m.sentiment_label = %s" in data_query
+    assert data_params == [3, 0.7, published_after, "negative", 20, 20]
