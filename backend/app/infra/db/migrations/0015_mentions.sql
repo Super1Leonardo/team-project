@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS mentions (
     dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
     is_primary BOOLEAN NOT NULL DEFAULT TRUE,
     resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    top_tokens JSONB NOT NULL DEFAULT '[]',
+    highlight_spans JSONB NOT NULL DEFAULT '[]',
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     clickhouse_synced_at TIMESTAMPTZ
 );

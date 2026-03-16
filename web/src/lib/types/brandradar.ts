@@ -117,7 +117,24 @@ export interface Mention {
 	dedup_group_id?: number | null;
 	is_primary: boolean;
 	resolved: boolean;
+	top_tokens: MentionTopToken[];
+	highlight_spans: MentionHighlightSpan[];
 	processed_at: string;
+}
+
+export interface MentionTopToken {
+	token: string;
+	text: string;
+	score: number;
+	start?: number | null;
+	end?: number | null;
+}
+
+export interface MentionHighlightSpan {
+	text: string;
+	score: number;
+	start: number;
+	end: number;
 }
 
 export interface MLQueueItem {

@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
     finally:
         stop_event.set()
         await asyncio.gather(*worker_tasks, return_exceptions=True)
+        await runtime.external_ml_gateway.aclose()
 
 
 def create_app() -> FastAPI:

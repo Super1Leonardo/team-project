@@ -158,6 +158,8 @@ class _ServiceStore:
             "dedup_group_id": None,
             "is_primary": True,
             "resolved": resolved,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": datetime.now(UTC),
         }
 

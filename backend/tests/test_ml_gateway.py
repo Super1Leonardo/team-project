@@ -14,7 +14,7 @@ class _RecordingAsyncClient:
     instances: list["_RecordingAsyncClient"] = []
     response = httpx.Response(200, json={"results": []})
 
-    def __init__(self, *, timeout: httpx.Timeout):
+    def __init__(self, *, timeout: httpx.Timeout, **_: object):
         self.timeout = timeout
         self.post_calls: list[tuple[str, dict]] = []
         self.get_calls: list[str] = []
@@ -26,8 +26,11 @@ class _RecordingAsyncClient:
     async def __aexit__(self, exc_type, exc, tb) -> None:
         return None
 
-    async def post(self, url: str, json: dict) -> httpx.Response:
-        self.post_calls.append((url, json))
+    async def aclose(self) -> None:
+        return None
+
+    async def post(self, url: str, json: dict, params: dict | None = None) -> httpx.Response:
+        self.post_calls.append((url, {"json": json, "params": params}))
         return self.__class__.response
 
     async def get(self, url: str) -> httpx.Response:
@@ -40,6 +43,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
         settings = Settings(
             external_ml_base_url="http://ml.example",
             external_ml_predict_path="/predict",
+            external_ml_top_k_tokens=7,
             external_ml_timeout_seconds=60,
             external_ml_connect_timeout_seconds=3,
         )
@@ -69,7 +73,50 @@ class ExternalMLGatewayTests(unittest.TestCase):
             [
                 (
                     "http://ml.example/predict",
-                    {"items": [{"text": "brand update", "company": "Brand Radar"}]},
+                    {
+                        "json": {"items": [{"text": "brand update", "company": "Brand Radar"}]},
+                        "params": None,
+                    },
+                )
+            ],
+        )
+
+    def test_predict_passes_top_k_only_for_token_endpoint(self) -> None:
+        settings = Settings(
+            external_ml_base_url="http://ml.example",
+            external_ml_predict_path="/analyze_with_tokens_batch",
+            external_ml_top_k_tokens=7,
+            external_ml_timeout_seconds=60,
+            external_ml_connect_timeout_seconds=3,
+        )
+        gateway = ExternalMLGateway(settings)
+        _RecordingAsyncClient.instances.clear()
+        _RecordingAsyncClient.response = httpx.Response(200, json={"results": []})
+
+        with patch("backend.app.ml.ml_gateway.httpx.AsyncClient", _RecordingAsyncClient):
+            asyncio.run(
+                gateway.predict(
+                    [
+                        {
+                            "raw_post_id": 1,
+                            "text": "brand update",
+                            "company": "Brand Radar",
+                            "keywords": ["brand"],
+                        }
+                    ]
+                )
+            )
+
+        client = _RecordingAsyncClient.instances[-1]
+        self.assertEqual(
+            client.post_calls,
+            [
+                (
+                    "http://ml.example/analyze_with_tokens_batch",
+                    {
+                        "json": {"items": [{"text": "brand update", "company": "Brand Radar"}]},
+                        "params": {"top_k": 7},
+                    },
                 )
             ],
         )

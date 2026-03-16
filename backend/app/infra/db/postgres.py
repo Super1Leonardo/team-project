@@ -157,6 +157,8 @@ class BrandRadarPostgresStore:
                             dedup_group_id BIGINT REFERENCES dedup_groups(id) ON DELETE SET NULL,
                             is_primary BOOLEAN NOT NULL DEFAULT TRUE,
                             resolved BOOLEAN NOT NULL DEFAULT FALSE,
+                            top_tokens JSONB NOT NULL DEFAULT '[]',
+                            highlight_spans JSONB NOT NULL DEFAULT '[]',
                             processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             clickhouse_synced_at TIMESTAMPTZ
                         )
@@ -184,6 +186,18 @@ class BrandRadarPostgresStore:
                         """
                         ALTER TABLE mentions
                         ADD COLUMN IF NOT EXISTS resolved BOOLEAN NOT NULL DEFAULT FALSE
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ADD COLUMN IF NOT EXISTS top_tokens JSONB NOT NULL DEFAULT '[]'
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE mentions
+                        ADD COLUMN IF NOT EXISTS highlight_spans JSONB NOT NULL DEFAULT '[]'
                         """
                     )
                     cur.execute(
@@ -1346,12 +1360,14 @@ class BrandRadarPostgresStore:
                         embedding,
                         dedup_group_id,
                         is_primary,
+                        top_tokens,
+                        highlight_spans,
                         processed_at
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
                         CAST(%s AS vector),
-                        %s, %s, %s
+                        %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (raw_post_id) DO UPDATE SET
                         project_id = EXCLUDED.project_id,
@@ -1363,6 +1379,8 @@ class BrandRadarPostgresStore:
                         embedding = EXCLUDED.embedding,
                         dedup_group_id = EXCLUDED.dedup_group_id,
                         is_primary = EXCLUDED.is_primary,
+                        top_tokens = EXCLUDED.top_tokens,
+                        highlight_spans = EXCLUDED.highlight_spans,
                         processed_at = EXCLUDED.processed_at,
                         clickhouse_synced_at = NULL
                     RETURNING
@@ -1389,6 +1407,8 @@ class BrandRadarPostgresStore:
                         embedding_literal,
                         item.get("dedup_group_id"),
                         item["is_primary"],
+                        Jsonb(item.get("top_tokens", [])),
+                        Jsonb(item.get("highlight_spans", [])),
                         processed_at,
                     ),
                 )
@@ -1794,6 +1814,8 @@ class BrandRadarPostgresStore:
                     m.dedup_group_id,
                     m.is_primary,
                     m.resolved,
+                    m.top_tokens,
+                    m.highlight_spans,
                     m.processed_at,
                     rp.source_id,
                     s.source_type,
@@ -1875,6 +1897,8 @@ class BrandRadarPostgresStore:
                     m.dedup_group_id,
                     m.is_primary,
                     m.resolved,
+                    m.top_tokens,
+                    m.highlight_spans,
                     m.processed_at,
                     rp.source_id,
                     s.source_type,

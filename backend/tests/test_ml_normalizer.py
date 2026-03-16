@@ -227,6 +227,35 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["dedup_group_id"], 77)
         self.assertFalse(normalized[0]["is_primary"])
 
+    def test_normalize_remote_results_builds_highlight_spans_from_top_tokens(self) -> None:
+        normalized = self.normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "is_relevant": True,
+                    "relevance_score": 0.91,
+                    "sentiment": "neutral",
+                    "sentiment_score": 0.11,
+                    "top_tokens": [
+                        {"token": "Brand", "score": 0.87},
+                        {"token": "outage", "score": 0.95},
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(
+            [token["token"] for token in normalized[0]["top_tokens"]],
+            ["outage", "Brand"],
+        )
+        self.assertEqual(
+            normalized[0]["highlight_spans"],
+            [
+                {"text": "Brand outage", "score": 0.95, "start": 0, "end": 12},
+            ],
+        )
+
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(
             ExternalMLResponseError,

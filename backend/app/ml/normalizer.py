@@ -128,6 +128,14 @@ class MLResultNormalizer:
                 queue_item["risk_words"],
             )
             embedding = self._normalize_embedding(result.get("embedding"))
+            top_tokens = self._normalize_top_tokens(
+                result.get("top_tokens"),
+                text=queue_item["text"],
+            )
+            highlight_spans = self._build_highlight_spans(
+                queue_item["text"],
+                top_tokens,
+            )
             dedup_group_id, is_primary = self._assign_dedup(
                 project_id=int(queue_item["project_id"]),
                 relevance_label=relevance_label,
@@ -146,6 +154,8 @@ class MLResultNormalizer:
                     "embedding": embedding,
                     "dedup_group_id": dedup_group_id,
                     "is_primary": is_primary,
+                    "top_tokens": top_tokens,
+                    "highlight_spans": highlight_spans,
                     "processed_at": self._parse_datetime(result.get("processed_at")),
                 }
             )
@@ -186,6 +196,8 @@ class MLResultNormalizer:
                 "embedding": None,
                 "dedup_group_id": None,
                 "is_primary": True,
+                "top_tokens": [],
+                "highlight_spans": [],
                 "processed_at": None,
             }
             for item in queue_items
@@ -414,6 +426,236 @@ class MLResultNormalizer:
     @staticmethod
     def _normalize_text(value: str) -> str:
         return " ".join(value.casefold().split())
+
+    @classmethod
+    def _normalize_top_tokens(
+        cls,
+        value: Any,
+        *,
+        text: str,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+
+        normalized_tokens: list[dict[str, Any]] = []
+        for item in value:
+            normalized = cls._normalize_top_token(item, text=text)
+            if normalized is not None:
+                normalized_tokens.append(normalized)
+
+        return sorted(
+            normalized_tokens,
+            key=lambda item: (
+                -float(item["score"]),
+                item["start"] if item["start"] is not None else 10**9,
+                item["token"],
+            ),
+        )
+
+    @classmethod
+    def _normalize_top_token(
+        cls,
+        item: Any,
+        *,
+        text: str,
+    ) -> dict[str, Any] | None:
+        if isinstance(item, str):
+            token = cls._sanitize_highlight_token(item)
+            if token is None:
+                return None
+            return {
+                "token": token,
+                "text": token,
+                "score": 0.0,
+                "start": None,
+                "end": None,
+            }
+
+        if not isinstance(item, dict):
+            return None
+
+        raw_token = (
+            item.get("token")
+            or item.get("text")
+            or item.get("piece")
+            or item.get("word")
+            or item.get("value")
+        )
+        token = cls._sanitize_highlight_token(raw_token)
+        if token is None:
+            return None
+
+        score = cls._normalize_float(
+            item,
+            keys=("score", "importance", "weight"),
+            default=0.0,
+        )
+        start = cls._coerce_int(
+            item.get("start", item.get("offset_start", item.get("char_start")))
+        )
+        end = cls._coerce_int(
+            item.get("end", item.get("offset_end", item.get("char_end")))
+        )
+        token_text = token
+        if start is not None and end is not None and 0 <= start < end <= len(text):
+            candidate_text = text[start:end]
+            if candidate_text.strip():
+                token_text = candidate_text
+
+        return {
+            "token": token,
+            "text": token_text,
+            "score": score,
+            "start": start,
+            "end": end,
+        }
+
+    @classmethod
+    def _build_highlight_spans(
+        cls,
+        text: str,
+        top_tokens: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        spans: list[dict[str, Any]] = []
+        occupied_ranges: list[tuple[int, int]] = []
+
+        for token in top_tokens:
+            span = cls._resolve_highlight_span(
+                text,
+                token,
+                occupied_ranges=occupied_ranges,
+            )
+            if span is None:
+                continue
+            spans.append(span)
+            occupied_ranges.append((span["start"], span["end"]))
+
+        return cls._merge_highlight_spans(text, spans)
+
+    @classmethod
+    def _resolve_highlight_span(
+        cls,
+        text: str,
+        token: dict[str, Any],
+        *,
+        occupied_ranges: list[tuple[int, int]],
+    ) -> dict[str, Any] | None:
+        start = token.get("start")
+        end = token.get("end")
+        if (
+            isinstance(start, int)
+            and isinstance(end, int)
+            and 0 <= start < end <= len(text)
+        ):
+            candidate_text = text[start:end]
+            if candidate_text.strip() and not cls._ranges_overlap(
+                start,
+                end,
+                occupied_ranges,
+            ):
+                return {
+                    "text": candidate_text,
+                    "score": float(token["score"]),
+                    "start": start,
+                    "end": end,
+                }
+
+        token_text = str(token.get("text") or token.get("token") or "").strip()
+        if not token_text:
+            return None
+
+        pattern = re.compile(re.escape(token_text), re.IGNORECASE)
+        for match in pattern.finditer(text):
+            match_start, match_end = match.span()
+            if cls._ranges_overlap(match_start, match_end, occupied_ranges):
+                continue
+            return {
+                "text": text[match_start:match_end],
+                "score": float(token["score"]),
+                "start": match_start,
+                "end": match_end,
+            }
+        return None
+
+    @staticmethod
+    def _merge_highlight_spans(
+        text: str,
+        spans: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not spans:
+            return []
+
+        sorted_spans = sorted(spans, key=lambda item: (item["start"], item["end"]))
+        merged: list[dict[str, Any]] = [dict(sorted_spans[0])]
+
+        for span in sorted_spans[1:]:
+            previous = merged[-1]
+            if span["start"] <= previous["end"] + 1:
+                previous["end"] = max(previous["end"], span["end"])
+                previous["score"] = max(float(previous["score"]), float(span["score"]))
+                previous["text"] = text[previous["start"]:previous["end"]]
+                continue
+            merged.append(dict(span))
+
+        return merged
+
+    @staticmethod
+    def _ranges_overlap(
+        start: int,
+        end: int,
+        occupied_ranges: list[tuple[int, int]],
+    ) -> bool:
+        return any(start < occupied_end and end > occupied_start for occupied_start, occupied_end in occupied_ranges)
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _sanitize_highlight_token(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+
+        cleaned = value.strip()
+        for prefix in ("##", "\u2581", "\u0120"):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+
+        cleaned = cleaned.strip()
+        if not cleaned:
+            return None
+        if cleaned.upper() in {"[CLS]", "[SEP]", "[PAD]"}:
+            return None
+        if cleaned in {"<s>", "</s>", "<pad>"}:
+            return None
+        if not any(character.isalnum() for character in cleaned):
+            return None
+        return cleaned
+
+    @staticmethod
+    def _clean_highlight_token(value: Any) -> str | None:
+        return MLResultNormalizer._sanitize_highlight_token(value)
+        if not isinstance(value, str):
+            return None
+        cleaned = value.strip()
+        for prefix in ("##", "▁", "Ġ"):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+        cleaned = cleaned.strip()
+        if not cleaned:
+            return None
+        if cleaned.upper() in {"[CLS]", "[SEP]", "[PAD]"}:
+            return None
+        if cleaned in {"<s>", "</s>", "<pad>"}:
+            return None
+        if not any(character.isalnum() for character in cleaned):
+            return None
+        return cleaned
 
     @staticmethod
     def _is_word_char(value: str) -> bool:

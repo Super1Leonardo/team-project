@@ -7,6 +7,21 @@
 		mlScore: number;
 	}
 
+	export interface HighlightSpan {
+		text: string;
+		score: number;
+		start: number;
+		end: number;
+	}
+
+	export interface TopToken {
+		token: string;
+		text: string;
+		score: number;
+		start?: number | null;
+		end?: number | null;
+	}
+
 	export interface Cluster {
 		id: string;
 		title: string;
@@ -17,6 +32,8 @@
 		hasRiskWords: boolean;
 		text: string;
 		url: string | null;
+		highlightSpans: HighlightSpan[];
+		topTokens: TopToken[];
 		duplicates: Duplicate[];
 	}
 </script>

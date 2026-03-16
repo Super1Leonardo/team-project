@@ -60,6 +60,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 1,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=12),
         },
         {
@@ -83,6 +85,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 2,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=36),
         },
         {
@@ -106,6 +110,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 3,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=48),
         },
         {
@@ -129,6 +135,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 4,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=60),
         },
         {
@@ -152,6 +160,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 5,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=72),
         },
         {
@@ -175,6 +185,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 6,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=84),
         },
         {
@@ -198,6 +210,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 7,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=3),
         },
         {
@@ -221,6 +235,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 8,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=8),
         },
         {
@@ -244,6 +260,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 9,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=10),
         },
         {
@@ -267,6 +285,8 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "dedup_group_id": 10,
             "is_primary": True,
             "resolved": False,
+            "top_tokens": [],
+            "highlight_spans": [],
             "processed_at": now - timedelta(hours=20),
         },
     ]

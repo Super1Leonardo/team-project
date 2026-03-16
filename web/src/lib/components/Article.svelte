@@ -22,17 +22,68 @@
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import { ChevronDown, ExternalLink } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
+	import type { Cluster, HighlightSpan } from '$lib/components/ArticleList.svelte';
 
-	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
-	let { cluster }: { cluster: any } = $props();
+	type TextSegment = {
+		text: string;
+		highlighted: boolean;
+		score?: number;
+	};
 
-	// Svelte 5 Rune для состояния раскрытия дублей
+	let { cluster }: { cluster: Cluster } = $props();
+
 	let isOpen = $state(false);
-
-	// Dialog state
 	let dialogOpen = $state(false);
 
-	// Цветовая кодировка тональности
+	function buildTextSegments(text: string, spans: HighlightSpan[]): TextSegment[] {
+		if (!spans?.length) {
+			return [{ text, highlighted: false }];
+		}
+
+		const normalizedSpans = [...spans]
+			.filter((span) => span.start >= 0 && span.end > span.start && span.end <= text.length)
+			.sort((left, right) => left.start - right.start || left.end - right.end);
+
+		if (!normalizedSpans.length) {
+			return [{ text, highlighted: false }];
+		}
+
+		const segments: TextSegment[] = [];
+		let cursor = 0;
+
+		for (const span of normalizedSpans) {
+			if (span.start > cursor) {
+				segments.push({
+					text: text.slice(cursor, span.start),
+					highlighted: false
+				});
+			}
+
+			if (span.end <= cursor) {
+				continue;
+			}
+
+			const start = Math.max(cursor, span.start);
+			segments.push({
+				text: text.slice(start, span.end),
+				highlighted: true,
+				score: span.score
+			});
+			cursor = span.end;
+		}
+
+		if (cursor < text.length) {
+			segments.push({
+				text: text.slice(cursor),
+				highlighted: false
+			});
+		}
+
+		return segments.filter((segment) => segment.text.length > 0);
+	}
+
+	let textSegments = $derived(buildTextSegments(cluster.text, cluster.highlightSpans));
+
 	let sentimentColor = $derived(
 		cluster.sentiment === 'negative'
 			? 'bg-red-100 border-red-500 text-red-800'
@@ -47,7 +98,7 @@
 		<div>
 			<CardTitle class="text-lg">{cluster.title}</CardTitle>
 			<span class="text-sm text-muted-foreground"
-				>{cluster.source} • {new Date(cluster.publishedAt).toLocaleTimeString()}</span
+				>{cluster.source} вЂў {new Date(cluster.publishedAt).toLocaleTimeString()}</span
 			>
 		</div>
 
@@ -59,10 +110,10 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					<Badge variant="secondary">
-						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
+						{cluster.mlScore > 0 ? cluster.mlScore : 'вЂ”'}%
 					</Badge>
 				</Tooltip.Trigger>
-				<Tooltip.Content>Значение релевантности</Tooltip.Content>
+				<Tooltip.Content>Р—РЅР°С‡РµРЅРёРµ СЂРµР»РµРІР°РЅС‚РЅРѕСЃС‚Рё</Tooltip.Content>
 			</Tooltip.Root>
 
 			{#if cluster.hasRiskWords}
@@ -75,7 +126,7 @@
 						>
 					</HoverCardTrigger>
 					<HoverCardContent class="w-64 text-sm">
-						<p class="font-semibold">Статья содержит критически важную информацию о бизнесе</p>
+						<p class="font-semibold">РЎС‚Р°С‚СЊСЏ СЃРѕРґРµСЂР¶РёС‚ РєСЂРёС‚РёС‡РµСЃРєРё РІР°Р¶РЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ Р±РёР·РЅРµСЃРµ</p>
 					</HoverCardContent>
 				</HoverCard>
 			{/if}
@@ -83,7 +134,30 @@
 	</CardHeader>
 
 	<CardContent>
-		<p class="line-clamp-3 text-sm">{cluster.text}</p>
+		<p class="line-clamp-3 text-sm">
+			{#each textSegments as segment}
+				{#if segment.highlighted}
+					<mark
+						class="rounded bg-amber-200/80 px-0.5 text-inherit"
+						title={`ML importance: ${Math.round((segment.score ?? 0) * 100)}%`}
+					>
+						{segment.text}
+					</mark>
+				{:else}
+					{segment.text}
+				{/if}
+			{/each}
+		</p>
+
+		{#if cluster.topTokens.length > 0}
+			<div class="mt-3 flex flex-wrap gap-2">
+				{#each cluster.topTokens.slice(0, 5) as token}
+					<Badge variant="secondary" class="text-xs">
+						{token.text} {Math.round(token.score * 100)}%
+					</Badge>
+				{/each}
+			</div>
+		{/if}
 
 		<Dialog.Root bind:open={dialogOpen}>
 			<Dialog.Trigger>
@@ -92,19 +166,32 @@
 					size="sm"
 					class="mt-2 w-full justify-end gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
 				>
-					Читать далее <ExternalLink class="h-4 w-4" />
+					Р§РёС‚Р°С‚СЊ РґР°Р»РµРµ <ExternalLink class="h-4 w-4" />
 				</Button>
 			</Dialog.Trigger>
 			<Dialog.Content class="max-w-3xl max-h-[80vh] overflow-y-auto m-2">
 				<Dialog.Header>
 					<Dialog.Title class="text-xl">{cluster.title}</Dialog.Title>
 					<Dialog.Description>
-						{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
+						{cluster.source} вЂў {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
 					</Dialog.Description>
 				</Dialog.Header>
 
 				<div class="space-y-4">
-					<p class="whitespace-pre-wrap">{cluster.text}</p>
+					<div class="whitespace-pre-wrap break-words">
+						{#each textSegments as segment}
+							{#if segment.highlighted}
+								<mark
+									class="rounded bg-amber-200/80 px-0.5 text-inherit"
+									title={`ML importance: ${Math.round((segment.score ?? 0) * 100)}%`}
+								>
+									{segment.text}
+								</mark>
+							{:else}
+								{segment.text}
+							{/if}
+						{/each}
+					</div>
 
 					{#if cluster.url}
 						<a
@@ -113,7 +200,7 @@
 							rel="noopener noreferrer"
 							class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
 						>
-							Открыть оригинал <ExternalLink class="h-4 w-4" />
+							РћС‚РєСЂС‹С‚СЊ РѕСЂРёРіРёРЅР°Р» <ExternalLink class="h-4 w-4" />
 						</a>
 					{/if}
 				</div>
@@ -131,7 +218,7 @@
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
-							<span>Похожие упоминания ({cluster.duplicates.length})</span>
+							<span>РџРѕС…РѕР¶РёРµ СѓРїРѕРјРёРЅР°РЅРёСЏ ({cluster.duplicates.length})</span>
 							<ChevronDown
 								size={16}
 								class="transition-transform duration-200 {isOpen ? 'rotate-180' : ''}"
@@ -152,7 +239,7 @@
 							<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title}</p>
 							<div class="mt-1 flex items-center gap-2">
 								<span class="font-mono text-xs text-muted-foreground"
-									>Релевантность: {dup.mlScore > 0 ? (dup.mlScore * 100).toFixed(0) : '—'}%</span
+									>Р РµР»РµРІР°РЅС‚РЅРѕСЃС‚СЊ: {dup.mlScore > 0 ? (dup.mlScore * 100).toFixed(0) : 'вЂ”'}%</span
 								>
 							</div>
 						</div>

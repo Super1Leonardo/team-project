@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     clickhouse_user: str = "brandradar"
     clickhouse_password: str = "brandradar"
     external_ml_base_url: str = "http://178.154.216.255:8000"
-    external_ml_predict_path: str = "/analyze_batch"
+    external_ml_predict_path: str = "/analyze_with_tokens_batch"
+    external_ml_top_k_tokens: int = 10
     external_ml_health_path: str = "/health"
     external_ml_timeout_seconds: float = 60.0
     external_ml_connect_timeout_seconds: float = 3.0

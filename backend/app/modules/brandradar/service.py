@@ -282,6 +282,8 @@ class BrandRadarService:
                 "embedding": item.embedding,
                 "dedup_group_id": item.dedup_group_id,
                 "is_primary": item.is_primary,
+                "top_tokens": getattr(item, "top_tokens", []),
+                "highlight_spans": getattr(item, "highlight_spans", []),
                 "processed_at": item.processed_at,
             }
             for item in payload.results

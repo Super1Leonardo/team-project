@@ -196,6 +196,21 @@ class RawPostResponse(BaseModel):
     ml_processed: bool
 
 
+class MentionTokenResponse(BaseModel):
+    token: str
+    text: str
+    score: float
+    start: int | None = None
+    end: int | None = None
+
+
+class MentionHighlightSpanResponse(BaseModel):
+    text: str
+    score: float
+    start: int
+    end: int
+
+
 class MentionResponse(BaseModel):
     id: int
     raw_post_id: int
@@ -217,6 +232,8 @@ class MentionResponse(BaseModel):
     dedup_group_id: int | None = None
     is_primary: bool
     resolved: bool
+    top_tokens: list[MentionTokenResponse] = Field(default_factory=list)
+    highlight_spans: list[MentionHighlightSpanResponse] = Field(default_factory=list)
     processed_at: datetime
 
 
@@ -283,6 +300,8 @@ class MLResultWriteItem(BaseModel):
     embedding: list[float] | None = Field(default=None, min_length=384, max_length=384)
     dedup_group_id: int | None = None
     is_primary: bool = True
+    top_tokens: list[dict[str, Any]] = Field(default_factory=list)
+    highlight_spans: list[dict[str, Any]] = Field(default_factory=list)
     processed_at: datetime | None = None
 
 

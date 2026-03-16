@@ -11,7 +11,7 @@
 		raw_post_id: number;
 		project_id: number;
 		source_id: number;
-		source_type: 'telegram' | 'vk' | 'dzen' | 'rss';
+		source_type: 'telegram' | 'vk' | 'dzen' | 'rss' | 'website';
 		source_name?: string;
 		url: string | null;
 		title: string | null;
@@ -26,6 +26,20 @@
 		risk_words?: string[];
 		dedup_group_id: number | null;
 		is_primary: boolean;
+		resolved: boolean;
+		top_tokens?: Array<{
+			token: string;
+			text: string;
+			score: number;
+			start?: number | null;
+			end?: number | null;
+		}>;
+		highlight_spans?: Array<{
+			text: string;
+			score: number;
+			start: number;
+			end: number;
+		}>;
 		dedup?: { duplicates: any[] };
 	}
 
@@ -42,6 +56,8 @@
 			hasRiskWords: m.has_risk_words,
 			text: m.text,
 			url: m.url,
+			highlightSpans: m.highlight_spans || [],
+			topTokens: m.top_tokens || [],
 			duplicates: m.dedup?.duplicates || []
 		}))
 	);

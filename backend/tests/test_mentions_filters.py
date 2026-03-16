@@ -32,6 +32,23 @@ def _build_mention() -> dict:
         "dedup_group_id": None,
         "is_primary": True,
         "resolved": False,
+        "top_tokens": [
+            {
+                "token": "Brand",
+                "text": "Brand",
+                "score": 0.87,
+                "start": 0,
+                "end": 5,
+            }
+        ],
+        "highlight_spans": [
+            {
+                "text": "Brand",
+                "score": 0.87,
+                "start": 0,
+                "end": 5,
+            }
+        ],
         "processed_at": now,
     }
 
