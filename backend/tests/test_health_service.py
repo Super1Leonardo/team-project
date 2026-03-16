@@ -8,10 +8,11 @@ from backend.app.modules.brandradar.service import BrandRadarService
 
 
 class _HealthyStore:
-    def ping(self) -> None:
-        return None
+    def __init__(self) -> None:
+        self.count_calls = 0
 
     def count_unprocessed_raw_posts(self) -> int:
+        self.count_calls += 1
         return 7
 
 
@@ -33,8 +34,9 @@ class _UnhealthyMLGateway:
 
 class HealthServiceTests(unittest.TestCase):
     def test_get_health_reports_ml_status_and_error(self) -> None:
+        store = _HealthyStore()
         runtime = SimpleNamespace(
-            postgres_store=_HealthyStore(),
+            postgres_store=store,
             clickhouse_store=_HealthyClickHouseStore(),
             external_ml_gateway=_UnhealthyMLGateway(),
         )
@@ -54,3 +56,22 @@ class HealthServiceTests(unittest.TestCase):
                 "ml_queue_size": 7,
             },
         )
+        self.assertEqual(store.count_calls, 1)
+
+    def test_get_health_uses_short_ttl_cache(self) -> None:
+        store = _HealthyStore()
+        runtime = SimpleNamespace(
+            postgres_store=store,
+            clickhouse_store=_HealthyClickHouseStore(),
+            external_ml_gateway=_UnhealthyMLGateway(),
+        )
+        runtime.external_ml_gateway.settings = SimpleNamespace(
+            backend_health_cache_ttl_seconds=2.0
+        )
+        service = BrandRadarService(runtime)
+
+        first = asyncio.run(service.get_health())
+        second = asyncio.run(service.get_health())
+
+        self.assertEqual(first, second)
+        self.assertEqual(store.count_calls, 1)

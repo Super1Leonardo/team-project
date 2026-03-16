@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,6 +17,9 @@ class BrandRadarService:
         self.runtime = runtime
         self._project_reprocessing_tasks: dict[int, asyncio.Task[None]] = {}
         self._pending_project_reprocessing: dict[int, bool] = {}
+        self._health_cache: dict[str, Any] | None = None
+        self._health_cache_expires_at = 0.0
+        self._health_cache_lock: asyncio.Lock | None = None
 
     async def list_projects(self) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self.runtime.postgres_store.list_projects)
@@ -408,60 +412,82 @@ class BrandRadarService:
         )
 
     async def get_health(self) -> dict[str, Any]:
-        postgres_status = "healthy"
-        clickhouse_status = "healthy"
-        ml_status = "healthy"
-        ml_error: str | None = None
-        ml_url = self.runtime.external_ml_gateway.predict_url
-        queue_size = 0
+        now = time.monotonic()
+        if self._health_cache is not None and now < self._health_cache_expires_at:
+            return dict(self._health_cache)
 
-        try:
-            await asyncio.to_thread(self.runtime.postgres_store.ping)
-        except Exception:
-            postgres_status = "unhealthy"
+        if self._health_cache_lock is None:
+            self._health_cache_lock = asyncio.Lock()
 
-        try:
-            await asyncio.to_thread(self.runtime.clickhouse_store.ping)
-        except Exception:
-            clickhouse_status = "unhealthy"
+        async with self._health_cache_lock:
+            now = time.monotonic()
+            if self._health_cache is not None and now < self._health_cache_expires_at:
+                return dict(self._health_cache)
 
-        if postgres_status == "healthy":
-            try:
-                queue_size = await asyncio.to_thread(
-                    self.runtime.postgres_store.count_unprocessed_raw_posts
-                )
-            except Exception:
+            postgres_task = asyncio.to_thread(
+                self.runtime.postgres_store.count_unprocessed_raw_posts
+            )
+            clickhouse_task = asyncio.to_thread(self.runtime.clickhouse_store.ping)
+            ml_task = self.runtime.external_ml_gateway.get_health_status()
+
+            postgres_result, clickhouse_result, ml_result = await asyncio.gather(
+                postgres_task,
+                clickhouse_task,
+                ml_task,
+                return_exceptions=True,
+            )
+
+            postgres_status = "healthy"
+            clickhouse_status = "healthy"
+            ml_status = "healthy"
+            ml_error: str | None = None
+            ml_url = self.runtime.external_ml_gateway.predict_url
+            queue_size = 0
+
+            if isinstance(postgres_result, Exception):
                 postgres_status = "unhealthy"
+            else:
+                queue_size = int(postgres_result)
 
-        try:
-            ml_health = await self.runtime.external_ml_gateway.get_health_status()
-            ml_status = ml_health["status"]
-            ml_error = ml_health.get("error")
-            ml_url = ml_health.get("url", ml_url)
-        except Exception as exc:
-            ml_status = "unhealthy"
-            ml_error = str(exc)
+            if isinstance(clickhouse_result, Exception):
+                clickhouse_status = "unhealthy"
 
-        if (
-            postgres_status == "healthy"
-            and clickhouse_status == "healthy"
-            and ml_status == "healthy"
-        ):
-            overall = "healthy"
-        elif postgres_status == "unhealthy" and clickhouse_status == "unhealthy":
-            overall = "unhealthy"
-        else:
-            overall = "degraded"
+            if isinstance(ml_result, Exception):
+                ml_status = "unhealthy"
+                ml_error = str(ml_result)
+            else:
+                ml_status = ml_result["status"]
+                ml_error = ml_result.get("error")
+                ml_url = ml_result.get("url", ml_url)
 
-        return {
-            "status": overall,
-            "postgres": postgres_status,
-            "clickhouse": clickhouse_status,
-            "ml": ml_status,
-            "ml_url": ml_url,
-            "ml_error": ml_error,
-            "ml_queue_size": queue_size,
-        }
+            if (
+                postgres_status == "healthy"
+                and clickhouse_status == "healthy"
+                and ml_status == "healthy"
+            ):
+                overall = "healthy"
+            elif postgres_status == "unhealthy" and clickhouse_status == "unhealthy":
+                overall = "unhealthy"
+            else:
+                overall = "degraded"
+
+            result = {
+                "status": overall,
+                "postgres": postgres_status,
+                "clickhouse": clickhouse_status,
+                "ml": ml_status,
+                "ml_url": ml_url,
+                "ml_error": ml_error,
+                "ml_queue_size": queue_size,
+            }
+            gateway_settings = getattr(self.runtime.external_ml_gateway, "settings", None)
+            ttl_seconds = max(
+                0.0,
+                float(getattr(gateway_settings, "backend_health_cache_ttl_seconds", 2.0)),
+            )
+            self._health_cache = dict(result)
+            self._health_cache_expires_at = time.monotonic() + ttl_seconds
+            return result
 
     @staticmethod
     def _log_background_task_result(task: asyncio.Task) -> None:

@@ -214,6 +214,7 @@ def test_list_clusters_groups_similar_mentions_before_pagination() -> None:
     assert "ROW_NUMBER() OVER" in data_query
     assert "mentions_count" in data_query
     assert "WHERE rc.cluster_rank = 1" in data_query
+    assert "ORDER BY rc.last_seen_at DESC, rc.id DESC" in data_query
     assert data_params == [3, 0.5, published_after, "negative", 10, 10]
 
 class PersistMentionsCursor:

@@ -1587,7 +1587,7 @@ class BrandRadarPostgresStore:
                     rc.collected_at
                 FROM ranked_clusters rc
                 WHERE rc.cluster_rank = 1
-                ORDER BY rc.last_seen_at DESC, rc.representative_mention_id DESC
+                ORDER BY rc.last_seen_at DESC, rc.id DESC
                 LIMIT %s
                 OFFSET %s
                 """,
