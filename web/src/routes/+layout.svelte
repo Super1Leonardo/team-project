@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import Header from '$lib/components/Header.svelte';
 	import { Toaster } from 'svelte-sonner';
+	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 
 	let { children, data } = $props();
 </script>
@@ -11,9 +12,11 @@
 
 <Toaster richColors={true} position="top-right" />
 
-<div class="pt-4 px-8">
-	<Header health={data.health} />
-	<div class="max-w-prose mx-auto">
-		{@render children()}
+<Tooltip.Provider>
+	<div class="pt-4 px-8">
+		<Header health={data.health} />
+		<div class="max-w-prose mx-auto">
+			{@render children()}
+		</div>
 	</div>
-</div>
+</Tooltip.Provider>
