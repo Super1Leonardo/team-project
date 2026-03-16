@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 from urllib.parse import quote, urljoin
 
 import httpx
-from bs4 import BeautifulSoup
+
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    BeautifulSoup = None
 
 from backend.app.common.schemas import (
     ChannelParseResult,
@@ -32,11 +36,19 @@ class TelegramGateway:
             )
         }
 
+    @staticmethod
+    def _ensure_public_scraping_dependencies() -> None:
+        if BeautifulSoup is None:
+            raise TelegramServiceError(
+                "Telegram public scraping dependency is not installed. Install beautifulsoup4."
+            )
+
     async def parse_configured_channels(
         self,
         limit_per_channel: int = 20,
         channels: list[str] | None = None,
     ) -> ParseResponse:
+        self._ensure_public_scraping_dependencies()
         requested_channels = [
             channel_ref.strip()
             for channel_ref in (channels or [])

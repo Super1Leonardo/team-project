@@ -11,7 +11,13 @@ try:
     import httpx
 except ModuleNotFoundError:  # pragma: no cover - optional for test environments with fake fetchers
     httpx = None
-from bs4 import BeautifulSoup, Tag
+try:
+    from bs4 import BeautifulSoup, Tag
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev setups
+    BeautifulSoup = None
+
+    class Tag:  # type: ignore[no-redef]
+        pass
 
 from backend.app.collectors.base import BaseCollector
 from backend.app.common.schemas import MessageSource, ParsedMessage
@@ -41,12 +47,20 @@ class WebsiteCollector(BaseCollector):
         self._fetcher = fetcher or self._fetch
         self._detail_concurrency = max(1, detail_concurrency)
 
+    @staticmethod
+    def _ensure_html_parser_dependency() -> None:
+        if BeautifulSoup is None:
+            raise RuntimeError(
+                "beautifulsoup4 is required to parse website sources."
+            )
+
     async def collect(
         self,
         source: dict[str, Any],
         *,
         limit: int = 100,
     ) -> list[ParsedMessage]:
+        self._ensure_html_parser_dependency()
         source_config = source.get("source_config") or {}
         if not isinstance(source_config, dict):
             raise DomainValidationError(

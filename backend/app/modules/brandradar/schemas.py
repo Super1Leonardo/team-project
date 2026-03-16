@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import Enum
+from datetime import timedelta
 from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 
@@ -10,6 +12,31 @@ RelevanceLabel = Literal["relevant", "irrelevant"]
 SentimentLabel = Literal["positive", "neutral", "negative"]
 SourceType = Literal["telegram", "vk", "dzen", "rss", "website"]
 T = TypeVar("T")
+
+
+class MentionConfidenceThreshold(str, Enum):
+    at_least_05 = "0.5"
+    at_least_07 = "0.7"
+    at_least_09 = "0.9"
+
+    @property
+    def threshold(self) -> float:
+        return float(self.value)
+
+
+class MentionPeriod(str, Enum):
+    last_24_hours = "24h"
+    last_7_days = "7d"
+    last_30_days = "30d"
+
+    @property
+    def delta(self) -> timedelta:
+        mapping = {
+            "24h": timedelta(hours=24),
+            "7d": timedelta(days=7),
+            "30d": timedelta(days=30),
+        }
+        return mapping[self.value]
 
 
 class ResponseMeta(BaseModel):
