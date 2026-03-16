@@ -19,7 +19,8 @@
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
-	import { ChevronDown } from '@lucide/svelte';
+	import * as Dialog from '$lib/components/ui/shadcn/dialog';
+	import { ChevronDown, ExternalLink } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
 	// Добавлена базовая типизация any (в идеале импортировать тип Cluster)
@@ -27,6 +28,9 @@
 
 	// Svelte 5 Rune для состояния раскрытия дублей
 	let isOpen = $state(false);
+
+	// Dialog state
+	let dialogOpen = $state(false);
 
 	// Цветовая кодировка тональности
 	let sentimentColor = $derived(
@@ -80,6 +84,41 @@
 
 	<CardContent>
 		<p class="line-clamp-3 text-sm">{cluster.text}</p>
+		
+		<Dialog.Root bind:open={dialogOpen}>
+			<Dialog.Trigger>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="mt-2 w-full justify-end gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+				>
+					Читать далее <ExternalLink class="h-4 w-4" />
+				</Button>
+			</Dialog.Trigger>
+			<Dialog.Content class="max-w-2xl max-h-[80vh] overflow-y-auto">
+				<Dialog.Header>
+					<Dialog.Title class="text-xl">{cluster.title}</Dialog.Title>
+					<Dialog.Description>
+						{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
+					</Dialog.Description>
+				</Dialog.Header>
+				
+				<div class="space-y-4">
+					<p class="whitespace-pre-wrap">{cluster.text}</p>
+					
+					{#if cluster.url}
+						<a 
+							href={cluster.url} 
+							target="_blank" 
+							rel="noopener noreferrer"
+							class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+						>
+							Открыть оригинал <ExternalLink class="h-4 w-4" />
+						</a>
+					{/if}
+				</div>
+			</Dialog.Content>
+		</Dialog.Root>
 	</CardContent>
 
 	{#if cluster.duplicates.length > 0}

@@ -12,6 +12,7 @@ export const mockClusters: Cluster[] = [
     hasRiskWords: true,
     text:
       "Клиенты массово жалуются на невозможность провести оплату через терминалы...",
+    url: "https://t.me/fintech_insider/1234",
     duplicates: [
       {
         title: "Терминалы не принимают карты",
@@ -36,6 +37,7 @@ export const mockClusters: Cluster[] = [
     mlScore: 0.98,
     hasRiskWords: false,
     text: "Банк анонсировал беспрецедентные условия по дебетовым картам...",
+    url: "https://rb.ru/invest/loyalty",
     duplicates: [{
       title: "Обзор нового кешбэка от Brand Bank",
       source: "Habr",
@@ -53,6 +55,7 @@ export const mockClusters: Cluster[] = [
     hasRiskWords: true,
     text:
       "Завтра с 02:00 до 04:00 по московскому времени возможны краткосрочные прерывания...",
+    url: "https://brandradar.example.com/announcements/maintenance",
     duplicates: [],
   },
   {
@@ -64,6 +67,7 @@ export const mockClusters: Cluster[] = [
     mlScore: 0.42,
     hasRiskWords: true,
     text: "В сети появилась информация о возможных переговорах...",
+    url: "https://bloomberg.com/news/articles/2026-03-14/acquisition-rumors",
     duplicates: [{
       title: "Акции ВкусМаркета растут на слухах о сделке",
       source: "Telegram: Market Watch",

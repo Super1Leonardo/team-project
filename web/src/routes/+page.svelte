@@ -42,6 +42,7 @@
 			mlScore: Math.round(m.relevance_score * 100),
 			hasRiskWords: m.has_risk_words,
 			text: m.text,
+			url: m.url,
 			duplicates: m.dedup?.duplicates || []
 		}))
 	);

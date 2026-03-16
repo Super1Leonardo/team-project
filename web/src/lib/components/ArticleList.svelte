@@ -16,6 +16,7 @@
 		mlScore: number;
 		hasRiskWords: boolean;
 		text: string;
+		url: string | null;
 		duplicates: Duplicate[];
 	}
 </script>
