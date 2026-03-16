@@ -113,21 +113,12 @@
 
 	function getSourceDisplayConfig(source: (typeof data.sources)[0]): string {
 		const config = source.source_config as Record<string, unknown>;
-		if (source.source_type === 'telegram') {
-			return `${config.channel}`;
-		}
-		if (source.source_type === 'vk') {
-			return String(config.domain || `ID: ${config.group_id}`);
-		}
-		if (source.source_type === 'rss') {
-			return String(config.url || config.feed_url || 'Нет URL');
-		}
-		if (source.source_type === 'website') {
-			return String(config.url || 'Нет URL');
-		}
-		if (source.source_type === 'dzen') {
+		if (source.source_type === 'telegram') return `${config.channel}`;
+		if (source.source_type === 'vk') return String(config.domain || `ID: ${config.group_id}`);
+		if (source.source_type === 'rss') return String(config.url || config.feed_url || 'Нет URL');
+		if (source.source_type === 'website') return String(config.url || 'Нет URL');
+		if (source.source_type === 'dzen')
 			return String(config.channel || config.blog_id || 'Нет канала');
-		}
 		return 'Неизвестно';
 	}
 </script>
@@ -180,11 +171,11 @@
 
 					{#if collector}
 						<div class="flex gap-2">
-							<div class="flex gap-1 items-center text-muted-foreground">
+							<div class="flex items-center gap-1 text-muted-foreground">
 								<BrainCircuit class="h-4 w-4" /> ML:
 							</div>
 							<div
-								class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground border rounded-sm p-1"
+								class="flex flex-wrap gap-x-4 gap-y-1 rounded-sm border p-1 text-sm text-muted-foreground"
 							>
 								{health?.ml ? tDbStatus(health.ml) : '?'}
 								<span>Очередь: {health?.ml_queue_size ?? '?'}</span>
@@ -224,9 +215,11 @@
 				<div class="space-y-3">
 					{#each data.sources as source (source.id)}
 						{@const status = getSourceStatus(source)}
-						<div class="flex items-center justify-between rounded-lg border p-4">
-							<div class="flex items-center gap-4">
-								<div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+						<div class="rounded-lg border p-4">
+							<div class="flex items-start gap-3 sm:gap-4">
+								<div
+									class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted"
+								>
 									{#if source.source_type === 'telegram'}
 										<Send class="h-5 w-5" />
 									{:else if source.source_type === 'vk'}
@@ -239,59 +232,140 @@
 										<Sparkle class="h-5 w-5" />
 									{/if}
 								</div>
-								<div>
-									<div class="flex items-center gap-2">
-										<span class="font-medium">{tSourceType(source.source_type as SourceType)}</span>
-										<span class="text-muted-foreground">{getSourceDisplayConfig(source)}</span>
-										<span class={getStatusColor(status)}>• {getStatusText(status)}</span>
+
+								<div class="flex min-w-0 flex-1 flex-col">
+									<div class="flex items-center justify-between gap-2">
+										<span class="font-medium text-foreground"
+											>{tSourceType(source.source_type as SourceType)}</span
+										>
+
+										<form
+											method="POST"
+											action="?/toggleSource"
+											id="toggle-form-{source.id}"
+											class="hidden shrink-0 items-center gap-2 sm:flex"
+											use:enhance={() => {
+												submittingSourceId = source.id;
+												return async ({ result, update }) => {
+													if (result.type === 'failure') {
+														toast.error('Ошибка при обновлении источника');
+													}
+													await update();
+													submittingSourceId = null;
+												};
+											}}
+										>
+											<input type="hidden" name="source_id" value={source.id} />
+											<input type="hidden" name="project_id" value={project?.id} />
+											<input type="hidden" name="current_state" value={String(source.is_active)} />
+
+											{#if submittingSourceId === source.id}
+												<Spinner class="size-4" />
+											{/if}
+
+											<span class="text-sm {getStatusColor(status)}">
+												• {getStatusText(status)}
+											</span>
+
+											<Switch
+												checked={source.is_active}
+												disabled={submittingSourceId === source.id}
+												onCheckedChange={() => {
+													const form = document.getElementById(
+														'toggle-form-' + source.id
+													) as HTMLFormElement | null;
+													form?.requestSubmit();
+												}}
+											/>
+										</form>
+
+										<span class="text-sm sm:hidden {getStatusColor(status)}">
+											• {getStatusText(status)}
+										</span>
 									</div>
-									<div class="flex items-center gap-2 text-sm text-muted-foreground">
-										{#if source.last_collected_at}
-											Последний сбор: {new Date(source.last_collected_at).toLocaleString('ru-RU')}
-										{:else}
-											Ещё не собирался
-										{/if}
+
+									<span
+										class="mt-0.5 truncate text-sm text-muted-foreground"
+										title={getSourceDisplayConfig(source)}
+									>
+										{getSourceDisplayConfig(source)}
+									</span>
+
+									<div class="mt-1.5 hidden flex-col gap-1 text-sm text-muted-foreground sm:flex">
+										<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+											<span class="whitespace-nowrap">
+												{#if source.last_collected_at}
+													Последний сбор: {new Date(source.last_collected_at).toLocaleString(
+														'ru-RU'
+													)}
+												{:else}
+													Ещё не собирался
+												{/if}
+											</span>
+										</div>
+
 										{#if source.last_error}
-											<span class="text-destructive">• {tSourceError(source.last_error)}</span>
+											<span
+												class="break-words text-destructive"
+												title={tSourceError(source.last_error)}
+											>
+												• {tSourceError(source.last_error)}
+											</span>
 										{/if}
 									</div>
 								</div>
 							</div>
 
-							<form
-								method="POST"
-								action="?/toggleSource"
-								id="toggle-form-{source.id}"
-								use:enhance={() => {
-									submittingSourceId = source.id;
-									return async ({ result, update }) => {
-										if (result.type === 'failure') {
-											toast.error('Ошибка при обновлении источника');
-										}
-										await update();
-										submittingSourceId = null;
-									};
-								}}
-							>
-								<input type="hidden" name="source_id" value={source.id} />
-								<input type="hidden" name="project_id" value={project?.id} />
-								<input type="hidden" name="current_state" value={String(source.is_active)} />
-								<div class="flex items-center gap-2">
-									{#if submittingSourceId === source.id}
-										<Spinner class="size-4" />
+							<div class="mt-3 flex flex-col gap-2 sm:hidden">
+								<div class="text-sm text-muted-foreground">
+									{#if source.last_collected_at}
+										Последний сбор: {new Date(source.last_collected_at).toLocaleString('ru-RU')}
+									{:else}
+										Ещё не собирался
 									{/if}
-									<Switch
-										checked={source.is_active}
-										disabled={submittingSourceId === source.id}
-										onCheckedChange={() => {
-											const form = document.getElementById(
-												'toggle-form-' + source.id
-											) as HTMLFormElement | null;
-											form?.requestSubmit();
-										}}
-									/>
 								</div>
-							</form>
+
+								{#if source.last_error}
+									<div
+										class="text-sm break-words text-destructive"
+										title={tSourceError(source.last_error)}
+									>
+										• {tSourceError(source.last_error)}
+									</div>
+								{/if}
+
+								<form
+									method="POST"
+									action="?/toggleSource"
+									class="mt-1 w-full"
+									use:enhance={() => {
+										submittingSourceId = source.id;
+										return async ({ result, update }) => {
+											if (result.type === 'failure') {
+												toast.error('Ошибка при обновлении источника');
+											}
+											await update();
+											submittingSourceId = null;
+										};
+									}}
+								>
+									<input type="hidden" name="source_id" value={source.id} />
+									<input type="hidden" name="project_id" value={project?.id} />
+									<input type="hidden" name="current_state" value={String(source.is_active)} />
+
+									<Button
+										type="submit"
+										variant={source.is_active ? 'secondary' : 'default'}
+										class="w-full"
+										disabled={submittingSourceId === source.id}
+									>
+										{#if submittingSourceId === source.id}
+											<Spinner class="mr-2 size-4" />
+										{/if}
+										{source.is_active ? 'Отключить источник' : 'Включить источник'}
+									</Button>
+								</form>
+							</div>
 						</div>
 					{:else}
 						<div

@@ -27,6 +27,7 @@
 			(key === 'sentiment' && !value);
 
 		const url = new URL(page.url);
+
 		if (value && !isDefault) {
 			url.searchParams.set(key, value);
 		} else {
@@ -49,8 +50,10 @@
 	}
 </script>
 
-<div class="flex w-fit flex-wrap justify-center items-center gap-4 rounded-lg border bg-card p-4">
-	<div class="flex flex-col gap-1.5">
+<div
+	class="grid w-full grid-cols-2 gap-3 rounded-lg border bg-card p-3 sm:flex sm:w-fit sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4 sm:p-4"
+>
+	<div class="col-span-1 flex flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Тональность</span>
 		<Select.Root
 			type="single"
@@ -61,7 +64,7 @@
 				updateFilter('sentiment', val);
 			}}
 		>
-			<Select.Trigger class="w-45">
+			<Select.Trigger class="w-full sm:w-45">
 				{getSentimentLabel($sentiment)}
 			</Select.Trigger>
 			<Select.Content>
@@ -73,8 +76,8 @@
 		</Select.Root>
 	</div>
 
-	<div class="flex flex-col gap-1.5">
-		<span class="text-xs font-medium text-muted-foreground">Уверенность ML (Relevance)</span>
+	<div class="col-span-1 flex flex-col gap-1.5">
+		<span class="text-xs font-medium text-muted-foreground">Уверенность ML</span>
 		<Select.Root
 			type="single"
 			value={$confidence}
@@ -83,12 +86,8 @@
 				updateFilter('confidence', v);
 			}}
 		>
-			<Select.Trigger class="w-45">
-				{$confidence === '0.5'
-					? 'Средняя (≥ 50%)'
-					: $confidence === '0.7'
-						? 'Высокая (≥ 70%)'
-						: 'Строгая (≥ 90%)'}
+			<Select.Trigger class="w-full sm:w-45">
+				{$confidence === '0.5' ? '≥ 50%' : $confidence === '0.7' ? '≥ 70%' : '≥ 90%'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Item value="0.5">Средняя (≥ 50%)</Select.Item>
@@ -98,7 +97,7 @@
 		</Select.Root>
 	</div>
 
-	<div class="flex flex-col gap-1.5">
+	<div class="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
 		<span class="text-xs font-medium text-muted-foreground">Период анализа</span>
 		<Select.Root
 			type="single"
@@ -108,12 +107,8 @@
 				updateFilter('period', v);
 			}}
 		>
-			<Select.Trigger class="w-45">
-				{$period === '24h'
-					? 'Последние 24 часа'
-					: $period === '7d'
-						? 'Последние 7 дней'
-						: 'Последние 30 дней'}
+			<Select.Trigger class="w-full sm:w-45">
+				{$period === '24h' ? 'За 24 часа' : $period === '7d' ? 'За 7 дней' : 'За 30 дней'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Item value="24h">Последние 24 часа</Select.Item>
