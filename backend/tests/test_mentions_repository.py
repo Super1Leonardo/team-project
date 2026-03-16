@@ -206,6 +206,65 @@ def test_persist_mentions_casts_null_embedding_to_vector_type() -> None:
     assert fake_connection.commits == 1
 
 
+class MixedPersistMentionsCursor:
+    def __init__(self) -> None:
+        now = datetime.now(UTC)
+        self.executed: list[tuple[str, object]] = []
+        self._rows = [
+            {
+                "id": 11,
+                "source_id": 9,
+                "author": "author-1",
+                "published_at": now,
+                "collected_at": now,
+                "ml_processed": True,
+                "project_id": 3,
+                "source_type": "telegram",
+            },
+            {
+                "id": 12,
+                "source_id": 9,
+                "author": "author-2",
+                "published_at": now,
+                "collected_at": now,
+                "ml_processed": False,
+                "project_id": 3,
+                "source_type": "telegram",
+            },
+        ]
+        self._fetchone_calls = 0
+
+    def execute(self, query: str, params=None) -> None:
+        self.executed.append((" ".join(query.split()), params))
+
+    def fetchall(self) -> list[dict]:
+        return self._rows
+
+    def fetchone(self) -> dict:
+        self._fetchone_calls += 1
+        if self._fetchone_calls == 1:
+            return {
+                "id": 202,
+                "raw_post_id": 12,
+                "project_id": 3,
+                "relevance_score": 0.6,
+                "relevance_label": "relevant",
+                "sentiment_score": 0.1,
+                "sentiment_label": "neutral",
+                "has_risk_words": False,
+                "dedup_group_id": None,
+                "is_primary": True,
+                "processed_at": datetime.now(UTC),
+            }
+        raise AssertionError("fetchone called unexpectedly")
+
+    def __enter__(self) -> "MixedPersistMentionsCursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
 class PersistMentionsRepositoryTests(unittest.TestCase):
     def test_persist_mentions_casts_null_embedding_to_vector_type(self) -> None:
         fake_cursor = PersistMentionsCursor()
@@ -236,4 +295,50 @@ class PersistMentionsRepositoryTests(unittest.TestCase):
         self.assertIn("CAST(%s AS vector)", insert_query)
         self.assertNotIn("WHEN %s IS NULL THEN NULL", insert_query)
         self.assertIsNone(insert_params[7])
+        self.assertEqual(fake_connection.commits, 1)
+
+    def test_persist_mentions_skips_rows_already_processed_by_another_worker(self) -> None:
+        fake_cursor = MixedPersistMentionsCursor()
+        fake_connection = PersistMentionsConnection(fake_cursor)
+        store = BrandRadarPostgresStore(Settings())
+        store._connect = lambda *args, **kwargs: fake_connection  # type: ignore[method-assign]
+
+        result = store.persist_mentions(
+            [
+                {
+                    "raw_post_id": 11,
+                    "project_id": 3,
+                    "relevance_score": 0.7,
+                    "relevance_label": "relevant",
+                    "sentiment_score": 0.1,
+                    "sentiment_label": "neutral",
+                    "has_risk_words": False,
+                    "embedding": None,
+                    "dedup_group_id": None,
+                    "is_primary": True,
+                    "processed_at": datetime.now(UTC),
+                },
+                {
+                    "raw_post_id": 12,
+                    "project_id": 3,
+                    "relevance_score": 0.6,
+                    "relevance_label": "relevant",
+                    "sentiment_score": 0.1,
+                    "sentiment_label": "neutral",
+                    "has_risk_words": False,
+                    "embedding": None,
+                    "dedup_group_id": None,
+                    "is_primary": True,
+                    "processed_at": datetime.now(UTC),
+                },
+            ]
+        )
+
+        self.assertEqual(result["stored_count"], 1)
+        self.assertEqual(len(result["sync_rows"]), 1)
+        self.assertEqual(result["sync_rows"][0]["mention_id"], 202)
+        self.assertEqual(result["sync_rows"][0]["author"], "author-2")
+        update_query, update_params = fake_cursor.executed[2]
+        self.assertIn("UPDATE raw_posts SET ml_processed = TRUE", update_query)
+        self.assertEqual(update_params, ([12],))
         self.assertEqual(fake_connection.commits, 1)
