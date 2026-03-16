@@ -1,10 +1,22 @@
 # BrandRadar migrations
 
-`0001_brandradar_init.sql` is the canonical SQL snapshot for the MVP schema.
+This directory now contains two schema handoff formats for the MVP:
 
-Use it for:
-- bootstrapping a clean Postgres instance for a second backend team
-- reviewing the public data model without reading `init_db()` in Python
-- creating a first Alembic or Flyway baseline later
+- `0001_brandradar_init.sql`: one-shot baseline snapshot for bootstrapping a clean database
+- `0010_extensions.sql` ... `0016_events.sql`: the same schema split into per-table SQL files
 
-Runtime startup still calls `init_db()` for backward-compatible local bootstrap, but the SQL file is the safer handoff artifact.
+Use the split files when you need to:
+- review one table at a time
+- discuss ownership of schema parts in the backend team
+- prepare for a later move to Alembic or Flyway
+
+Apply the split files in this order:
+1. `0010_extensions.sql`
+2. `0011_projects.sql`
+3. `0012_sources.sql`
+4. `0013_raw_posts.sql`
+5. `0014_dedup_groups.sql`
+6. `0015_mentions.sql`
+7. `0016_events.sql`
+
+Runtime startup still calls `init_db()` for backward-compatible local bootstrap. These SQL files are still baselines, not a full migration history.

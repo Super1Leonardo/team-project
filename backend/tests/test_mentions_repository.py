@@ -90,19 +90,19 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert result["items"] == rows
     assert len(fake_cursor.executed) == 2
 
-    count_query, count_params = fake_cursor.executed[0]
-    data_query, data_params = fake_cursor.executed[1]
+    data_query, data_params = fake_cursor.executed[0]
+    count_query, count_params = fake_cursor.executed[1]
+
+    assert "LIMIT %s" in data_query
+    assert "OFFSET %s" in data_query
+    assert "m.sentiment_label = %s" in data_query
+    assert data_params == [3, 0.7, published_after, "negative", 20, 20]
 
     assert "COUNT(*) AS total" in count_query
     assert "m.relevance_score >= %s" in count_query
     assert "rp.published_at >= %s" in count_query
     assert "m.sentiment_label = %s" in count_query
     assert count_params == [3, 0.7, published_after, "negative"]
-
-    assert "LIMIT %s" in data_query
-    assert "OFFSET %s" in data_query
-    assert "m.sentiment_label = %s" in data_query
-    assert data_params == [3, 0.7, published_after, "negative", 20, 20]
 
 
 def test_list_mentions_can_skip_total_count_for_fast_path() -> None:

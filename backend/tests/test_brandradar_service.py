@@ -102,6 +102,12 @@ class _ServiceStore:
                 "risk_words": ["outage"],
             }
         ]
+        self.processing_stats = {
+            "total": 7,
+            "processed": 3,
+            "pending": 4,
+            "failed": 0,
+        }
 
     def get_project(self, project_id: int) -> dict:
         if project_id != 1:
@@ -117,8 +123,9 @@ class _ServiceStore:
         assert project_id == 1
         return list(self.active_sources if active_only else self.status_sources)
 
-    def count_unprocessed_raw_posts(self) -> int:
-        return 4
+    def get_raw_post_processing_stats(self, project_id: int | None = None) -> dict[str, int]:
+        assert project_id == 1
+        return dict(self.processing_stats)
 
     def fetch_unprocessed_raw_posts(self, limit: int) -> list[dict]:
         return self.raw_posts[:limit]
@@ -132,9 +139,9 @@ class _RecordingCollectorWorker:
         self,
         sources: list[dict],
         *,
-        per_source_limit: int | None = None,
+        lookback_days: int | None = None,
     ) -> dict:
-        self.calls.append(([int(source["id"]) for source in sources], per_source_limit))
+        self.calls.append(([int(source["id"]) for source in sources], lookback_days))
         return {
             "sources_checked": len(sources),
             "sources_processed": len(sources),
@@ -254,7 +261,7 @@ class BrandRadarServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await service.trigger_collector_run(
             project_id=1,
             source_ids=[20],
-            limit_per_source=5,
+            lookback_days=5,
         )
         await asyncio.sleep(0)
 
@@ -280,6 +287,11 @@ class BrandRadarServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await service.get_collector_status(project_id=1)
 
         self.assertEqual(result["ml_queue_size"], 4)
+        self.assertEqual(result["raw_posts_total"], 7)
+        self.assertEqual(result["raw_posts_processed"], 3)
+        self.assertEqual(result["raw_posts_pending"], 4)
+        self.assertEqual(result["raw_posts_failed"], 0)
+        self.assertEqual(result["processing_status"], "processing")
         self.assertEqual(
             [(item["id"], item["status"], item["raw_posts_count"]) for item in result["sources"]],
             [
