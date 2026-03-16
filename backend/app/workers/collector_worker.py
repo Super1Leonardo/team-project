@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.app.collectors.base import BaseCollector
@@ -16,12 +17,12 @@ class CollectorWorker:
         store: BrandRadarPostgresStore,
         collectors: dict[str, BaseCollector],
         *,
-        per_source_limit: int = 100,
+        lookback_days: int = 30,
         idle_sleep_seconds: float = 30.0,
     ):
         self.store = store
         self.collectors = collectors
-        self.per_source_limit = per_source_limit
+        self.lookback_days = lookback_days
         self.idle_sleep_seconds = idle_sleep_seconds
 
     async def run_once(self) -> dict[str, Any]:
@@ -32,7 +33,7 @@ class CollectorWorker:
         self,
         sources: list[dict[str, Any]],
         *,
-        per_source_limit: int | None = None,
+        lookback_days: int | None = None,
     ) -> dict[str, Any]:
         summary = {
             "sources_checked": len(sources),
@@ -40,7 +41,10 @@ class CollectorWorker:
             "posts_saved": 0,
             "errors": [],
         }
-        limit = per_source_limit if per_source_limit is not None else self.per_source_limit
+        effective_lookback_days = (
+            lookback_days if lookback_days is not None else self.lookback_days
+        )
+        published_after = datetime.now(UTC) - timedelta(days=effective_lookback_days)
 
         for source in sources:
             collector = self.collectors.get(source["source_type"])
@@ -51,7 +55,10 @@ class CollectorWorker:
                 continue
 
             try:
-                posts = await collector.collect(source, limit=limit)
+                posts = await collector.collect(
+                    source,
+                    published_after=published_after,
+                )
                 saved_count = await asyncio.to_thread(self.store.save_raw_posts, source, posts)
                 summary["sources_processed"] += 1
                 summary["posts_saved"] += saved_count

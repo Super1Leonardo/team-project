@@ -143,7 +143,7 @@ class SourceResponse(BaseModel):
 
 class CollectorRunRequest(BaseModel):
     source_ids: list[int] = Field(default_factory=list)
-    limit_per_source: int = Field(default=100, ge=1, le=500)
+    lookback_days: int = Field(default=30, ge=1, le=365)
 
 
 class CollectorRunResponse(BaseModel):

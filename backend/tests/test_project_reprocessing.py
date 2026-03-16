@@ -82,8 +82,52 @@ def test_reset_project_mentions_for_reprocessing_requeues_posts() -> None:
     ]
 
 
-class _ProjectUpdateStore:
+class RequeueFailedProjectCursor:
     def __init__(self) -> None:
+        self.executed: list[tuple[str, object]] = []
+        self.rowcount = 0
+
+    def execute(self, query: str, params=None) -> None:
+        normalized_query = " ".join(query.split())
+        self.executed.append((normalized_query, params))
+        if normalized_query.startswith("UPDATE raw_posts AS rp"):
+            self.rowcount = 3
+            return
+        if normalized_query.startswith("INSERT INTO events"):
+            self.rowcount = 1
+            return
+        raise AssertionError(f"Unexpected query: {normalized_query}")
+
+    def __enter__(self) -> "RequeueFailedProjectCursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+def test_requeue_failed_raw_posts_for_reprocessing_retries_only_failed_posts() -> None:
+    fake_cursor = RequeueFailedProjectCursor()
+    fake_connection = ResetProjectConnection(fake_cursor)
+    store = BrandRadarPostgresStore(Settings())
+    store._connect = lambda *args, **kwargs: fake_connection  # type: ignore[method-assign]
+    store._ensure_project_exists = lambda project_id: None  # type: ignore[method-assign]
+
+    result = store.requeue_failed_raw_posts_for_reprocessing(3)
+
+    assert result == 3
+    assert fake_connection.commits == 1
+    assert [query for query, _ in fake_cursor.executed] == [
+        (
+            "UPDATE raw_posts AS rp SET ml_processed = FALSE, ml_failed_at = NULL, "
+            "ml_error = NULL FROM sources s WHERE s.id = rp.source_id AND s.project_id = %s "
+            "AND rp.ml_processed = FALSE AND rp.ml_failed_at IS NOT NULL"
+        ),
+        "INSERT INTO events ( project_id, event_type, payload ) VALUES (%s, %s, %s)",
+    ]
+
+
+class _ProjectUpdateStore:
+    def __init__(self, *, failed_count: int = 0, requeued_failed_count: int = 0) -> None:
         self.project = {
             "id": 7,
             "name": "Brand Radar",
@@ -95,6 +139,9 @@ class _ProjectUpdateStore:
             "mentions_count": 2,
         }
         self.reset_calls: list[int] = []
+        self.failed_requeue_calls: list[int] = []
+        self.failed_count = failed_count
+        self.requeued_failed_count = requeued_failed_count
 
     def get_project(self, project_id: int) -> dict:
         assert project_id == 7
@@ -127,6 +174,19 @@ class _ProjectUpdateStore:
             "dedup_groups_deleted": 1,
             "raw_posts_requeued": 5,
         }
+
+    def get_raw_post_processing_stats(self, project_id: int | None = None) -> dict[str, int]:
+        assert project_id == 7
+        return {
+            "total": 7,
+            "processed": 2,
+            "pending": 1,
+            "failed": self.failed_count,
+        }
+
+    def requeue_failed_raw_posts_for_reprocessing(self, project_id: int) -> int:
+        self.failed_requeue_calls.append(project_id)
+        return self.requeued_failed_count
 
 
 class _RecordingProjectWorker:
@@ -187,6 +247,7 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["name"], "Brand Radar 2")
         self.assertEqual(store.reset_calls, [])
+        self.assertEqual(store.failed_requeue_calls, [])
         self.assertEqual(worker.calls, [])
 
     async def test_update_project_keeps_project_updated_when_reprocessing_fails(self) -> None:
@@ -208,6 +269,27 @@ class ProjectUpdateReprocessingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["keywords"], ["brand", "brand radar"])
         self.assertEqual(store.reset_calls, [7])
+        self.assertEqual(store.failed_requeue_calls, [])
+        self.assertEqual(worker.calls, [7])
+
+    async def test_update_project_retries_failed_posts_even_when_filters_do_not_change(self) -> None:
+        store = _ProjectUpdateStore(failed_count=3, requeued_failed_count=3)
+        worker = _RecordingProjectWorker()
+        service = BrandRadarService(
+            SimpleNamespace(
+                postgres_store=store,
+                ml_worker=worker,
+            )
+        )
+
+        result = await service.update_project(
+            7,
+            ProjectUpdateRequest(name="Brand Radar 2"),
+        )
+
+        self.assertEqual(result["name"], "Brand Radar 2")
+        self.assertEqual(store.reset_calls, [])
+        self.assertEqual(store.failed_requeue_calls, [7])
         self.assertEqual(worker.calls, [7])
 
 

@@ -45,7 +45,8 @@ class TelegramGateway:
 
     async def parse_configured_channels(
         self,
-        limit_per_channel: int = 20,
+        *,
+        published_after: datetime | None = None,
         channels: list[str] | None = None,
     ) -> ParseResponse:
         self._ensure_public_scraping_dependencies()
@@ -80,7 +81,7 @@ class TelegramGateway:
                         requested_as=channel_ref,
                         channel_username=normalized_channel,
                         channel_title=channel_title,
-                        limit_per_channel=limit_per_channel,
+                        published_after=published_after,
                     )
                     results.append(
                         ChannelParseResult(
@@ -137,7 +138,7 @@ class TelegramGateway:
         requested_as: str,
         channel_username: str,
         channel_title: str,
-        limit_per_channel: int,
+        published_after: datetime | None,
     ) -> list[ParsedMessage]:
         messages: list[ParsedMessage] = []
         fallback_channel_id = self._build_public_channel_id(channel_username)
@@ -157,6 +158,8 @@ class TelegramGateway:
             channel_id = self._build_public_channel_id(username) or fallback_channel_id
             published_at = self._extract_public_datetime(node)
             if published_at is None:
+                continue
+            if published_after is not None and published_at < published_after:
                 continue
 
             text_block = node.select_one(".tgme_widget_message_text")
@@ -196,7 +199,7 @@ class TelegramGateway:
             )
 
         messages.sort(key=lambda item: (item.date, item.id), reverse=True)
-        return messages[:limit_per_channel]
+        return messages
 
     @staticmethod
     def _normalize_channel_ref(channel_ref: str) -> str:

@@ -41,7 +41,7 @@ def build_runtime(settings: Settings) -> ArchitectureRuntime:
             "rss": rss_collector,
             "website": website_collector,
         },
-        per_source_limit=settings.collector_per_source_limit,
+        lookback_days=settings.collector_lookback_days,
         idle_sleep_seconds=settings.collector_idle_sleep_seconds,
     )
     ml_normalizer = MLResultNormalizer(

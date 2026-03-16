@@ -540,6 +540,39 @@ class BrandRadarPostgresStore:
             "raw_posts_requeued": requeued_raw_posts,
         }
 
+    def requeue_failed_raw_posts_for_reprocessing(self, project_id: int) -> int:
+        self._ensure_project_exists(project_id)
+
+        with self._connect(autocommit=False) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE raw_posts AS rp
+                SET ml_processed = FALSE,
+                    ml_failed_at = NULL,
+                    ml_error = NULL
+                FROM sources s
+                WHERE s.id = rp.source_id
+                  AND s.project_id = %s
+                  AND rp.ml_processed = FALSE
+                  AND rp.ml_failed_at IS NOT NULL
+                """,
+                (project_id,),
+            )
+            requeued_raw_posts = int(cur.rowcount or 0)
+
+            if requeued_raw_posts > 0:
+                self._insert_event(
+                    cur,
+                    project_id=project_id,
+                    event_type="project_failed_raw_posts_requeued",
+                    payload={
+                        "raw_posts_requeued": requeued_raw_posts,
+                    },
+                )
+            conn.commit()
+
+        return requeued_raw_posts
+
     def delete_project(self, project_id: int) -> None:
         self.get_project(project_id)
         with self._connect() as conn, conn.cursor() as cur:

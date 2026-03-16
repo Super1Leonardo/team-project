@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, datetime
 
 from backend.app.collectors.website import WebsiteCollector
 from backend.app.core.exceptions import DomainValidationError
@@ -55,7 +56,7 @@ DETAIL_OLDER_HTML = """\
 
 
 class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_collect_parses_articles_and_fetches_detail_pages(self) -> None:
+    async def test_collect_parses_articles_and_filters_by_published_after(self) -> None:
         async def fake_fetcher(url: str) -> str:
             if url == "https://example.com/news":
                 return INDEX_HTML
@@ -67,17 +68,18 @@ class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
 
         collector = WebsiteCollector(fetcher=fake_fetcher)
         source = {"id": 25, "source_config": {"url": "https://example.com/news"}}
+        published_after = datetime(2026, 3, 15, 0, 0, tzinfo=UTC)
 
-        items = await collector.collect(source, limit=1)
+        items = await collector.collect(source, published_after=published_after)
 
         self.assertEqual(len(items), 1)
         item = items[0]
         self.assertEqual(item.source_type, "website")
-        self.assertEqual(item.title, "Older post")
-        self.assertEqual(item.text, "Full older text.")
-        self.assertEqual(item.url, "https://example.com/post/older-post")
-        self.assertEqual(item.meta["external_id"], "older-post")
-        self.assertEqual(item.meta["detail_url"], "https://example.com/post/older-post")
+        self.assertEqual(item.title, "Newer post")
+        self.assertEqual(item.text, "Full newer text with details.")
+        self.assertEqual(item.url, "https://example.com/post/newer-post")
+        self.assertEqual(item.meta["external_id"], "newer-post")
+        self.assertEqual(item.meta["detail_url"], "https://example.com/post/newer-post")
         self.assertEqual(item.source.requested_as, "https://example.com/news")
         self.assertEqual(item.source.title, "Test Website")
 
@@ -94,7 +96,7 @@ class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
         collector = WebsiteCollector(fetcher=fake_fetcher)
         source = {"id": 26, "source_config": {"url": "https://example.com/news"}}
 
-        items = await collector.collect(source, limit=2)
+        items = await collector.collect(source)
 
         self.assertEqual(len(items), 2)
         newer_item = next(item for item in items if item.meta["external_id"] == "newer-post")

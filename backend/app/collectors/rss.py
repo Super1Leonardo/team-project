@@ -34,7 +34,7 @@ class RssCollector(BaseCollector):
         self,
         source: dict[str, object],
         *,
-        limit: int = 100,
+        published_after: datetime | None = None,
     ) -> list[ParsedMessage]:
         source_config = source.get("source_config") or {}
         if not isinstance(source_config, dict):
@@ -44,7 +44,11 @@ class RssCollector(BaseCollector):
 
         feed_url = self._get_feed_url(source_config, source_id=source["id"])
         feed_body = await self._fetcher(feed_url)
-        return self._parse_feed(feed_url, feed_body, limit=limit)
+        return self._parse_feed(
+            feed_url,
+            feed_body,
+            published_after=published_after,
+        )
 
     async def _fetch(self, feed_url: str) -> str:
         if httpx is None:
@@ -81,7 +85,7 @@ class RssCollector(BaseCollector):
         feed_url: str,
         feed_body: str,
         *,
-        limit: int,
+        published_after: datetime | None,
     ) -> list[ParsedMessage]:
         try:
             root = ET.fromstring(feed_body)
@@ -94,7 +98,13 @@ class RssCollector(BaseCollector):
             items = cls._parse_rss_entries(root, feed_url)
 
         items.sort(key=lambda item: item.date, reverse=True)
-        return items[:limit]
+        if published_after is None:
+            return items
+        return [
+            item
+            for item in items
+            if item.date >= published_after
+        ]
 
     @classmethod
     def _parse_rss_entries(cls, root: ET.Element, feed_url: str) -> list[ParsedMessage]:

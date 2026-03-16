@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from backend.app.collectors.base import BaseCollector
@@ -17,7 +18,7 @@ class TelegramCollector(BaseCollector):
         self,
         source: dict[str, Any],
         *,
-        limit: int = 100,
+        published_after: datetime | None = None,
     ):
         source_config = source.get("source_config") or {}
         channel = source_config.get("channel")
@@ -27,7 +28,7 @@ class TelegramCollector(BaseCollector):
             )
 
         response = await self.gateway.parse_configured_channels(
-            limit_per_channel=limit,
+            published_after=published_after,
             channels=[channel],
         )
         errors = [

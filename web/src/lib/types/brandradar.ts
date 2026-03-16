@@ -56,7 +56,7 @@ export interface UpdateSourcePayload {
 
 export interface CollectorRunRequest {
 	source_ids?: number[];
-	limit_per_source?: number;
+	lookback_days?: number;
 }
 
 export interface CollectorRunResponse {

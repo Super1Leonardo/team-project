@@ -58,7 +58,7 @@ class WebsiteCollector(BaseCollector):
         self,
         source: dict[str, Any],
         *,
-        limit: int = 100,
+        published_after: datetime | None = None,
     ) -> list[ParsedMessage]:
         self._ensure_html_parser_dependency()
         source_config = source.get("source_config") or {}
@@ -71,7 +71,13 @@ class WebsiteCollector(BaseCollector):
         selectors = self._resolve_selectors(source_config, source_id=source["id"])
         index_body = await self._fetcher(base_url)
         site_title, entries = self._parse_index_page(base_url, index_body, selectors)
-        unique_entries = self._deduplicate_entries(entries, limit=limit)
+        unique_entries = self._deduplicate_entries(entries)
+        if published_after is not None:
+            unique_entries = [
+                entry
+                for entry in unique_entries
+                if entry["published_at"] >= published_after
+            ]
         if not unique_entries:
             return []
 
@@ -173,8 +179,6 @@ class WebsiteCollector(BaseCollector):
     def _deduplicate_entries(
         cls,
         entries: list[dict[str, Any]],
-        *,
-        limit: int,
     ) -> list[dict[str, Any]]:
         unique_entries: list[dict[str, Any]] = []
         seen_external_ids: set[str] = set()
@@ -185,8 +189,6 @@ class WebsiteCollector(BaseCollector):
                 continue
             seen_external_ids.add(external_id)
             unique_entries.append(entry)
-            if len(unique_entries) >= limit:
-                break
 
         return unique_entries
 

@@ -48,7 +48,32 @@ class BrandRadarService:
             for key in ("keywords", "exclude_keywords", "risk_words")
         )
         if not requires_feed_refresh:
-            return updated_project
+            processing_stats = await asyncio.to_thread(
+                self.runtime.postgres_store.get_raw_post_processing_stats,
+                project_id,
+            )
+            if processing_stats["failed"] <= 0:
+                return updated_project
+
+            requeued_failed_posts = await asyncio.to_thread(
+                self.runtime.postgres_store.requeue_failed_raw_posts_for_reprocessing,
+                project_id,
+            )
+            if requeued_failed_posts <= 0:
+                return updated_project
+
+            try:
+                await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
+            except Exception:
+                logger.exception(
+                    "Project %s was updated, failed raw posts were requeued, but immediate reprocessing failed.",
+                    project_id,
+                )
+
+            return await asyncio.to_thread(
+                self.runtime.postgres_store.get_project,
+                project_id,
+            )
 
         await asyncio.to_thread(
             self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
@@ -117,7 +142,7 @@ class BrandRadarService:
         *,
         project_id: int,
         source_ids: list[int] | None = None,
-        limit_per_source: int | None = None,
+        lookback_days: int | None = None,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         sources = await asyncio.to_thread(
@@ -136,7 +161,7 @@ class BrandRadarService:
         task = asyncio.create_task(
             self.runtime.collector_worker.run_sources(
                 sources,
-                per_source_limit=limit_per_source,
+                lookback_days=lookback_days,
             ),
             name=f"collector-project-{project_id}",
         )

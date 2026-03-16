@@ -408,7 +408,7 @@ async def run_collector_once(
         await service.trigger_collector_run(
             project_id=project_id,
             source_ids=payload.source_ids,
-            limit_per_source=payload.limit_per_source,
+            lookback_days=payload.lookback_days,
         )
     )
 

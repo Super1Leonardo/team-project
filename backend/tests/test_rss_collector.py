@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, datetime
 
 from backend.app.collectors.rss import RssCollector
 from backend.app.core.exceptions import DomainValidationError
@@ -34,14 +35,15 @@ RSS_SAMPLE = """\
 
 
 class RssCollectorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_collect_parses_feed_items_and_limits_results(self) -> None:
+    async def test_collect_parses_feed_items_and_filters_by_published_after(self) -> None:
         async def fake_fetcher(_: str) -> str:
             return RSS_SAMPLE
 
         collector = RssCollector(fetcher=fake_fetcher)
         source = {"id": 17, "source_config": {"url": "https://example.com/feed.xml"}}
+        published_after = datetime(2026, 3, 14, 11, 0, tzinfo=UTC)
 
-        items = await collector.collect(source, limit=1)
+        items = await collector.collect(source, published_after=published_after)
 
         self.assertEqual(len(items), 1)
         item = items[0]
