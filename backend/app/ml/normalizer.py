@@ -96,6 +96,7 @@ class MLResultNormalizer:
                 remote_item=result,
                 index=index,
             )
+            sentiment_label = self._normalize_sentiment_label(result)
             has_keyword_match = self._matches_keywords(
                 queue_item["text"],
                 queue_item["keywords"],
@@ -109,12 +110,10 @@ class MLResultNormalizer:
             if has_excluded_match or not has_keyword_match:
                 relevance_label = "irrelevant"
             else:
-                relevance_score = self._normalize_required_float(
+                relevance_score = self._normalize_required_relevance_score(
                     result,
-                    keys=ML_CONFIDENCE_KEYS,
-                    field_name="relevance score",
+                    sentiment_label=sentiment_label,
                 )
-            sentiment_label = self._normalize_sentiment_label(result)
             sentiment_score = self._normalize_float(
                 result,
                 keys=("sentiment_score", "sentiment_value", "polarity"),
@@ -277,24 +276,52 @@ class MLResultNormalizer:
                 continue
         return float(default)
 
-    @staticmethod
-    def _normalize_required_float(
+    @classmethod
+    def _normalize_required_relevance_score(
+        cls,
         payload: dict[str, Any],
         *,
-        keys: tuple[str, ...],
-        field_name: str,
+        sentiment_label: str,
     ) -> float:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                continue
+        for key in ML_CONFIDENCE_KEYS:
+            score = cls._coerce_confidence_value(
+                payload.get(key),
+                sentiment_label=sentiment_label,
+            )
+            if score is not None:
+                return score
         raise ExternalMLResponseError(
-            f"External ML result must contain a valid {field_name} in one of: {', '.join(keys)}."
+            "External ML result must contain a valid relevance score in one of: "
+            + ", ".join(ML_CONFIDENCE_KEYS)
+            + "."
         )
+
+    @staticmethod
+    def _coerce_confidence_value(
+        value: Any,
+        *,
+        sentiment_label: str,
+    ) -> float | None:
+        if value is None:
+            return None
+
+        if isinstance(value, dict):
+            normalized_map = {
+                str(key).strip().casefold(): item_value
+                for key, item_value in value.items()
+            }
+            sentiment_value = normalized_map.get(sentiment_label)
+            if sentiment_value is None:
+                return None
+            try:
+                return float(sentiment_value)
+            except (TypeError, ValueError):
+                return None
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _normalize_relevance_label(payload: dict[str, Any]) -> str:
