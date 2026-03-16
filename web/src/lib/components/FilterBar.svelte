@@ -4,20 +4,29 @@
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import { confidence, period, sentiment } from '$lib/stores/filters';
 
+	const DEFAULTS = {
+		confidence: '0.7',
+		period: '7d'
+	};
+
 	function syncFromUrl() {
-		const urlConf = page.url.searchParams.get('confidence') || '0.7';
-		const urlPeriod = page.url.searchParams.get('period') || '7d';
+		const urlConf = page.url.searchParams.get('confidence');
+		const urlPeriod = page.url.searchParams.get('period');
 		const urlSentiment = page.url.searchParams.get('sentiment');
-		confidence.set(urlConf);
-		period.set(urlPeriod);
-		sentiment.set(urlSentiment);
+		confidence.set(urlConf || DEFAULTS.confidence);
+		period.set(urlPeriod || DEFAULTS.period);
+		sentiment.set(urlSentiment || null);
 	}
 
 	syncFromUrl();
 
 	function updateFilter(key: string, value: string | null) {
+		const isDefault = (key === 'confidence' && value === DEFAULTS.confidence) ||
+			(key === 'period' && value === DEFAULTS.period) ||
+			(key === 'sentiment' && !value);
+
 		const url = new URL(page.url);
-		if (value) {
+		if (value && !isDefault) {
 			url.searchParams.set(key, value);
 		} else {
 			url.searchParams.delete(key);

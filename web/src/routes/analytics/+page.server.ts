@@ -42,9 +42,12 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (projectError) {
 		error = projectError;
 	} else if (project) {
-		const confidence = url.searchParams.get('confidence') || '0.7';
-		const period = url.searchParams.get('period') || '7d';
+		const urlConfidence = url.searchParams.get('confidence');
+		const urlPeriod = url.searchParams.get('period');
 		const sentiment = url.searchParams.get('sentiment');
+
+		const confidence = urlConfidence || '0.7';
+		const period = urlPeriod || '7d';
 
 		const queryParams = new URLSearchParams({
 			limit: '500',
