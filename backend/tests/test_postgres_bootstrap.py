@@ -90,6 +90,15 @@ class _FakeCursor:
             )
             return
 
+        if normalized_query == "UPDATE sources SET source_config = %s WHERE id = %s":
+            source_config = copy.deepcopy(getattr(params[0], "obj", params[0]))
+            source_id = int(params[1])
+            for source in self.state["sources"]:
+                if int(source["id"]) == source_id:
+                    source["source_config"] = source_config
+                    return
+            raise AssertionError(f"Unknown source id for update: {source_id}")
+
         if normalized_query.startswith(
             "SELECT p.id, p.name, p.keywords, p.exclude_keywords,"
         ):
@@ -266,6 +275,62 @@ class PostgresBootstrapTests(unittest.TestCase):
 
         self.assertEqual(len(state["projects"]), 1)
         self.assertEqual(len(state["sources"]), len(DEFAULT_BOOTSTRAP_SOURCES))
+        self.assertEqual(state["commits"], 1)
+
+    def test_bootstrap_default_project_and_sources_repairs_legacy_rss_url(self) -> None:
+        state = {
+            "projects": [
+                {
+                    "id": 3,
+                    "name": DEFAULT_BOOTSTRAP_PROJECT["name"],
+                    "keywords": [],
+                    "exclude_keywords": [],
+                    "risk_words": [],
+                    "created_at": datetime(2026, 3, 14, 12, 0, tzinfo=UTC),
+                }
+            ],
+            "sources": [
+                {
+                    "id": 1,
+                    "project_id": 3,
+                    "source_type": "telegram",
+                    "source_config": copy.deepcopy(
+                        DEFAULT_BOOTSTRAP_SOURCES[0]["source_config"]
+                    ),
+                    "is_active": DEFAULT_BOOTSTRAP_SOURCES[0]["is_active"],
+                    "poll_interval_s": DEFAULT_BOOTSTRAP_SOURCES[0]["poll_interval_s"],
+                },
+                {
+                    "id": 2,
+                    "project_id": 3,
+                    "source_type": "website",
+                    "source_config": copy.deepcopy(
+                        DEFAULT_BOOTSTRAP_SOURCES[1]["source_config"]
+                    ),
+                    "is_active": DEFAULT_BOOTSTRAP_SOURCES[1]["is_active"],
+                    "poll_interval_s": DEFAULT_BOOTSTRAP_SOURCES[1]["poll_interval_s"],
+                },
+                {
+                    "id": 3,
+                    "project_id": 3,
+                    "source_type": "rss",
+                    "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/"},
+                    "is_active": DEFAULT_BOOTSTRAP_SOURCES[2]["is_active"],
+                    "poll_interval_s": DEFAULT_BOOTSTRAP_SOURCES[2]["poll_interval_s"],
+                },
+            ],
+            "mentions_count": {},
+            "commits": 0,
+        }
+        store = self._build_store(state)
+
+        store.bootstrap_default_project_and_sources()
+
+        self.assertEqual(len(state["sources"]), len(DEFAULT_BOOTSTRAP_SOURCES))
+        self.assertEqual(
+            state["sources"][2]["source_config"],
+            copy.deepcopy(DEFAULT_BOOTSTRAP_SOURCES[2]["source_config"]),
+        )
         self.assertEqual(state["commits"], 1)
 
     def test_list_projects_returns_default_project_first(self) -> None:

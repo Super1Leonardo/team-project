@@ -52,6 +52,7 @@ DEFAULT_BOOTSTRAP_SOURCES = (
         "poll_interval_s": 300,
     },
 )
+LEGACY_BOOTSTRAP_RSS_URL = "http://rss-brandradar.ingress.prodcontest.com/"
 
 
 class BrandRadarPostgresStore:
@@ -302,8 +303,8 @@ class BrandRadarPostgresStore:
     def bootstrap_default_project_and_sources(self) -> None:
         with self._connect(autocommit=False) as conn, conn.cursor() as cur:
             project_id, project_created = self._ensure_bootstrap_project(cur)
-            inserted_sources = self._ensure_bootstrap_sources(cur, project_id)
-            if project_created or inserted_sources > 0:
+            inserted_sources, updated_sources = self._ensure_bootstrap_sources(cur, project_id)
+            if project_created or inserted_sources > 0 or updated_sources > 0:
                 conn.commit()
 
     def _ensure_bootstrap_project(self, cur: psycopg.Cursor) -> tuple[int, bool]:
@@ -344,7 +345,7 @@ class BrandRadarPostgresStore:
             raise RuntimeError("Failed to create bootstrap project.")
         return int(project_row["id"]), True
 
-    def _ensure_bootstrap_sources(self, cur: psycopg.Cursor, project_id: int) -> int:
+    def _ensure_bootstrap_sources(self, cur: psycopg.Cursor, project_id: int) -> tuple[int, int]:
         cur.execute(
             """
             SELECT id, source_type, source_config
@@ -354,13 +355,32 @@ class BrandRadarPostgresStore:
             """,
             (project_id,),
         )
-        existing_sources = {
-            (
+        existing_rows = list(cur.fetchall())
+        updated_sources = 0
+        existing_sources: set[tuple[str, str]] = set()
+
+        for row in existing_rows:
+            normalized_existing_config = self._normalize_source_config(
                 row["source_type"],
-                self._source_config_key(row["source_config"]),
+                row["source_config"],
             )
-            for row in cur.fetchall()
-        }
+            if normalized_existing_config != row["source_config"]:
+                cur.execute(
+                    """
+                    UPDATE sources
+                    SET source_config = %s
+                    WHERE id = %s
+                    """,
+                    (Jsonb(normalized_existing_config), row["id"]),
+                )
+                updated_sources += 1
+
+            existing_sources.add(
+                (
+                    row["source_type"],
+                    self._source_config_key(normalized_existing_config),
+                )
+            )
         inserted_sources = 0
 
         for source in DEFAULT_BOOTSTRAP_SOURCES:
@@ -396,7 +416,7 @@ class BrandRadarPostgresStore:
             existing_sources.add(source_key)
             inserted_sources += 1
 
-        return inserted_sources
+        return inserted_sources, updated_sources
 
     def ping(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:
@@ -1778,6 +1798,8 @@ class BrandRadarPostgresStore:
                 )
 
             normalized_url = url.strip()
+            if source_type == "rss" and normalized_url == LEGACY_BOOTSTRAP_RSS_URL:
+                normalized_url = DEFAULT_BOOTSTRAP_SOURCES[2]["source_config"]["url"]
             parsed = urlparse(normalized_url)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise DomainValidationError(
