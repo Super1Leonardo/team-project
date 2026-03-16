@@ -163,6 +163,27 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["relevance_label"], "relevant")
         self.assertEqual(normalized[0]["relevance_score"], 0.73)
 
+    def test_normalize_remote_results_uses_sentiment_probability_from_confidence_map(self) -> None:
+        normalized = self.normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "sentiment": "negative",
+                    "sentiment_score": 0.9419,
+                    "confidence": {
+                        "negative": 0.9419,
+                        "neutral": 0.0298,
+                        "positive": 0.0283,
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["sentiment_label"], "negative")
+        self.assertEqual(normalized[0]["relevance_score"], 0.9419)
+
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(
             ExternalMLResponseError,
