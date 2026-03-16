@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS sources (
     last_collected_at TIMESTAMPTZ,
     last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss')),
+    CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss', 'website')),
     CHECK (poll_interval_s > 0)
 );
 

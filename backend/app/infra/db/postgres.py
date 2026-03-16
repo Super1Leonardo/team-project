@@ -14,7 +14,17 @@ from backend.app.common.schemas import ParsedMessage
 from backend.app.core.config import Settings
 from backend.app.core.exceptions import DomainValidationError, ResourceNotFoundError
 
-SUPPORTED_SOURCE_TYPES = ("telegram", "vk", "dzen", "rss")
+SUPPORTED_SOURCE_TYPES = ("telegram", "vk", "dzen", "rss", "website")
+WEBSITE_SELECTOR_KEYS = (
+    "article_selector",
+    "link_selector",
+    "summary_selector",
+    "date_selector",
+    "site_title_selector",
+    "detail_title_selector",
+    "detail_paragraph_selector",
+    "original_link_selector",
+)
 
 
 class BrandRadarPostgresStore:
@@ -52,9 +62,22 @@ class BrandRadarPostgresStore:
                             last_collected_at TIMESTAMPTZ,
                             last_error TEXT,
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss')),
+                            CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss', 'website')),
                             CHECK (poll_interval_s > 0)
                         )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE sources
+                        DROP CONSTRAINT IF EXISTS sources_source_type_check
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE sources
+                        ADD CONSTRAINT sources_source_type_check
+                        CHECK (source_type IN ('telegram', 'vk', 'dzen', 'rss', 'website'))
                         """
                     )
                     cur.execute(
@@ -1184,19 +1207,35 @@ class BrandRadarPostgresStore:
             raise DomainValidationError("source_config must be a JSON object.")
 
         normalized_source_config = dict(source_config)
-        if source_type != "rss":
+        url = normalized_source_config.get("url")
+        if source_type in {"rss", "website"}:
+            if not isinstance(url, str) or not url.strip():
+                raise DomainValidationError(
+                    f"{source_type.upper()} source_config.url is required."
+                )
+
+            normalized_url = url.strip()
+            parsed = urlparse(normalized_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise DomainValidationError(
+                    f"{source_type.upper()} source_config.url must be a valid http(s) URL."
+                )
+
+            normalized_source_config["url"] = normalized_url
+
+        if source_type != "website":
             return normalized_source_config
 
-        url = normalized_source_config.get("url")
-        if not isinstance(url, str) or not url.strip():
-            raise DomainValidationError("RSS source_config.url is required.")
+        for key in WEBSITE_SELECTOR_KEYS:
+            if key not in normalized_source_config:
+                continue
+            value = normalized_source_config[key]
+            if not isinstance(value, str) or not value.strip():
+                raise DomainValidationError(
+                    f"Website source_config.{key} must be a non-empty string."
+                )
+            normalized_source_config[key] = value.strip()
 
-        normalized_url = url.strip()
-        parsed = urlparse(normalized_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise DomainValidationError("RSS source_config.url must be a valid http(s) URL.")
-
-        normalized_source_config["url"] = normalized_url
         return normalized_source_config
 
     @staticmethod

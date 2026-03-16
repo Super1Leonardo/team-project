@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 RelevanceLabel = Literal["relevant", "irrelevant"]
 SentimentLabel = Literal["positive", "neutral", "negative"]
-SourceType = Literal["telegram", "vk", "dzen", "rss"]
+SourceType = Literal["telegram", "vk", "dzen", "rss", "website"]
 T = TypeVar("T")
 
 
@@ -277,4 +277,7 @@ class BrandRadarHealthResponse(BaseModel):
     status: Literal["healthy", "degraded", "unhealthy"]
     postgres: Literal["healthy", "unhealthy"]
     clickhouse: Literal["healthy", "unhealthy"]
+    ml: Literal["healthy", "unhealthy"]
+    ml_url: str
+    ml_error: str | None = None
     ml_queue_size: int

@@ -1,16 +1,10 @@
 from functools import lru_cache
-from pathlib import Path
 from urllib.parse import quote_plus
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    telegram_api_id: int | None = None
-    telegram_api_hash: str | None = None
-    telegram_phone: str | None = None
-    telegram_session_path: Path = Path("backend/app/data/telegram_parser")
     parser_db_host: str = "localhost"
     parser_db_port: int = 5432
     parser_db_name: str = "brandradar"
@@ -21,15 +15,17 @@ class Settings(BaseSettings):
     clickhouse_database: str = "brandradar_ml"
     clickhouse_user: str = "brandradar"
     clickhouse_password: str = "brandradar"
-    external_ml_base_url: str = "http://178.154.216.255"
-    external_ml_predict_path: str = "/predict"
+    external_ml_base_url: str = "http://178.154.216.255:8000"
+    external_ml_predict_path: str = "/analyze"
     external_ml_timeout_seconds: float = 60.0
+    external_ml_connect_timeout_seconds: float = 3.0
+    external_ml_health_timeout_seconds: float = 2.0
     collector_per_source_limit: int = 100
     collector_idle_sleep_seconds: float = 5.0
     ml_worker_batch_size: int = 100
     ml_worker_idle_sleep_seconds: float = 15.0
     ml_dedup_threshold: float = 0.15
-    api_title: str = "Telegram Parser API"
+    api_title: str = "BrandRadar API"
     api_version: str = "0.1.0"
     backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -38,17 +34,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-    @field_validator("telegram_api_id", "telegram_api_hash", "telegram_phone", mode="before")
-    @classmethod
-    def normalize_empty_telegram_values(cls, value):
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
-
-    @property
-    def credentials_configured(self) -> bool:
-        return bool(self.telegram_api_id and self.telegram_api_hash)
 
     @property
     def cors_origins(self) -> list[str]:
@@ -70,6 +55,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-    settings.telegram_session_path.parent.mkdir(parents=True, exist_ok=True)
-    return settings
+    return Settings()

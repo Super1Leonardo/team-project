@@ -283,6 +283,9 @@ class BrandRadarService:
     async def get_health(self) -> dict[str, Any]:
         postgres_status = "healthy"
         clickhouse_status = "healthy"
+        ml_status = "healthy"
+        ml_error: str | None = None
+        ml_url = self.runtime.external_ml_gateway.predict_url
         queue_size = 0
 
         try:
@@ -303,7 +306,20 @@ class BrandRadarService:
             except Exception:
                 postgres_status = "unhealthy"
 
-        if postgres_status == "healthy" and clickhouse_status == "healthy":
+        try:
+            ml_health = await self.runtime.external_ml_gateway.get_health_status()
+            ml_status = ml_health["status"]
+            ml_error = ml_health.get("error")
+            ml_url = ml_health.get("url", ml_url)
+        except Exception as exc:
+            ml_status = "unhealthy"
+            ml_error = str(exc)
+
+        if (
+            postgres_status == "healthy"
+            and clickhouse_status == "healthy"
+            and ml_status == "healthy"
+        ):
             overall = "healthy"
         elif postgres_status == "unhealthy" and clickhouse_status == "unhealthy":
             overall = "unhealthy"
@@ -314,6 +330,9 @@ class BrandRadarService:
             "status": overall,
             "postgres": postgres_status,
             "clickhouse": clickhouse_status,
+            "ml": ml_status,
+            "ml_url": ml_url,
+            "ml_error": ml_error,
             "ml_queue_size": queue_size,
         }
 
