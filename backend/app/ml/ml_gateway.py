@@ -21,6 +21,12 @@ class ExternalMLGateway:
         return urljoin(base, path)
 
     @property
+    def health_url(self) -> str:
+        base = self.settings.external_ml_base_url.rstrip("/") + "/"
+        path = self.settings.external_ml_health_path.lstrip("/")
+        return urljoin(base, path)
+
+    @property
     def predict_timeout(self) -> httpx.Timeout:
         return httpx.Timeout(
             self.settings.external_ml_timeout_seconds,
@@ -41,7 +47,15 @@ class ExternalMLGateway:
 
     async def predict(self, items: list[dict[str, Any]]) -> Any:
         payload = {
-            "texts": jsonable_encoder([item.get("text", "") for item in items]),
+            "items": jsonable_encoder(
+                [
+                    {
+                        "text": item.get("text", ""),
+                        "company": item.get("company", ""),
+                    }
+                    for item in items
+                ]
+            ),
         }
 
         try:
@@ -67,28 +81,49 @@ class ExternalMLGateway:
             ) from exc
 
     async def get_health_status(self) -> dict[str, Any]:
-        payload = {"texts": []}
-
         try:
             async with httpx.AsyncClient(timeout=self.health_timeout) as client:
-                response = await client.post(self.predict_url, json=payload)
+                response = await client.get(self.health_url)
         except httpx.HTTPError as exc:
             return {
                 "status": "unhealthy",
-                "url": self.predict_url,
-                "error": f"External ML request to {self.predict_url} failed: {exc}",
+                "url": self.health_url,
+                "error": f"External ML health request to {self.health_url} failed: {exc}",
             }
 
-        if response.is_success or response.status_code in {400, 422}:
+        if response.status_code >= 400:
+            detail = response.text.strip() or response.reason_phrase
+            return {
+                "status": "unhealthy",
+                "url": self.health_url,
+                "error": f"External ML health probe returned {response.status_code}: {detail}",
+            }
+
+        try:
+            payload = response.json()
+        except ValueError:
             return {
                 "status": "healthy",
-                "url": self.predict_url,
+                "url": self.health_url,
                 "error": None,
             }
 
-        detail = response.text.strip() or response.reason_phrase
+        if isinstance(payload, dict):
+            raw_status = str(payload.get("status", "")).strip().casefold()
+            if raw_status in {"", "ok", "healthy"}:
+                return {
+                    "status": "healthy",
+                    "url": self.health_url,
+                    "error": None,
+                }
+            return {
+                "status": "unhealthy",
+                "url": self.health_url,
+                "error": f"External ML health probe returned unexpected status: {payload.get('status')}",
+            }
+
         return {
-            "status": "unhealthy",
-            "url": self.predict_url,
-            "error": f"External ML health probe returned {response.status_code}: {detail}",
+            "status": "healthy",
+            "url": self.health_url,
+            "error": None,
         }

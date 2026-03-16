@@ -27,6 +27,7 @@ class MLResultNormalizerTests(unittest.TestCase):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "company": "Brand Radar",
                 "external_id": "post-1",
                 "url": "https://example.com/1",
                 "title": "Relevant post",
@@ -44,6 +45,7 @@ class MLResultNormalizerTests(unittest.TestCase):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "company": "Brand Radar",
                 "external_id": "post-2",
                 "url": "https://example.com/2",
                 "title": "Missing keyword",
@@ -61,6 +63,7 @@ class MLResultNormalizerTests(unittest.TestCase):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "company": "Brand Radar",
                 "external_id": "post-3",
                 "url": "https://example.com/3",
                 "title": "Excluded post",
@@ -78,6 +81,7 @@ class MLResultNormalizerTests(unittest.TestCase):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "company": "Brand Radar",
                 "external_id": "post-4",
                 "url": "https://example.com/4",
                 "title": "No keyword gate",
@@ -142,9 +146,28 @@ class MLResultNormalizerTests(unittest.TestCase):
                 remote_results=[],
             )
 
+    def test_split_queue_items_for_ml_skips_non_matching_and_excluded_items(self) -> None:
+        ml_items, skipped_items = self.normalizer.split_queue_items_for_ml(
+            self.queue_items,
+        )
+
+        self.assertEqual([item["raw_post_id"] for item in ml_items], [1, 4])
+        self.assertEqual([item["raw_post_id"] for item in skipped_items], [2, 3])
+
+    def test_build_local_irrelevant_rows_marks_filtered_items_without_ml(self) -> None:
+        rows = self.normalizer.build_local_irrelevant_rows(self.queue_items[1:3])
+
+        self.assertEqual([row["raw_post_id"] for row in rows], [2, 3])
+        self.assertEqual([row["relevance_label"] for row in rows], ["irrelevant", "irrelevant"])
+        self.assertEqual([row["relevance_score"] for row in rows], [0.0, 0.0])
+        self.assertEqual([row["sentiment_label"] for row in rows], ["neutral", "neutral"])
+        self.assertEqual([row["has_risk_words"] for row in rows], [True, False])
+        self.assertEqual([row["embedding"] for row in rows], [None, None])
+
     @staticmethod
     def _remote_result() -> dict[str, Any]:
         return {
+            "company": "Brand Radar",
             "is_relevant": True,
             "relevance_score": 0.91,
             "sentiment": "neutral",

@@ -23,6 +23,7 @@ class _WorkerStore(_DedupFreeStore):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "project_name": "Brand Radar",
                 "external_id": "post-1",
                 "url": "https://example.com/1",
                 "title": "Good post",
@@ -40,6 +41,7 @@ class _WorkerStore(_DedupFreeStore):
                 "source_id": 10,
                 "project_id": 100,
                 "source_type": "rss",
+                "project_name": "Brand Radar",
                 "external_id": "post-2",
                 "url": "https://example.com/2",
                 "title": "Bad post",
@@ -69,6 +71,13 @@ class _WorkerStore(_DedupFreeStore):
 
     def persist_mentions(self, mention_rows: list[dict[str, Any]]) -> dict[str, Any]:
         self.persisted_rows.extend(mention_rows)
+        relevant_count = sum(1 for row in mention_rows if row["relevance_label"] == "relevant")
+        irrelevant_count = len(mention_rows) - relevant_count
+        dedup_count = sum(
+            1
+            for row in mention_rows
+            if row["dedup_group_id"] is not None or not row["is_primary"]
+        )
         sync_rows = [
             {
                 "mention_id": index + 1000,
@@ -94,9 +103,9 @@ class _WorkerStore(_DedupFreeStore):
             "projects": {
                 100: {
                     "batch_size": len(mention_rows),
-                    "relevant_count": len(mention_rows),
-                    "irrelevant_count": 0,
-                    "dedup_count": 0,
+                    "relevant_count": relevant_count,
+                    "irrelevant_count": irrelevant_count,
+                    "dedup_count": dedup_count,
                 }
             },
             "sync_rows": sync_rows,
@@ -174,6 +183,25 @@ class _GatewayWithBadItem:
 class _TransientFailureGateway:
     async def predict(self, items: list[dict[str, Any]]) -> Any:
         raise ExternalMLRequestError("service unavailable", status_code=503)
+
+
+class _RecordingEligibleGateway:
+    def __init__(self) -> None:
+        self.calls: list[list[int]] = []
+
+    async def predict(self, items: list[dict[str, Any]]) -> Any:
+        self.calls.append([int(item["raw_post_id"]) for item in items])
+        return {
+            "results": [
+                {
+                    "is_relevant": True,
+                    "relevance_score": 0.87,
+                    "sentiment": "negative",
+                    "sentiment_score": -0.4,
+                }
+                for _ in items
+            ]
+        }
 
 
 class _ClickHouseRecorder:
@@ -255,3 +283,93 @@ class MLWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["stored_count"], 1)
         self.assertEqual(result["synced_count"], 1)
         self.assertEqual(call_order, ["persist", "insert", "mark"])
+
+    async def test_run_once_skips_non_matching_posts_before_ml(self) -> None:
+        store = _WorkerStore()
+        store.raw_posts = [
+            {
+                **store.raw_posts[0],
+                "id": 1,
+                "text": "brand update",
+                "keywords": ["brand"],
+                "exclude_keywords": [],
+                "risk_words": ["outage"],
+            },
+            {
+                **store.raw_posts[1],
+                "id": 2,
+                "text": "service outage",
+                "keywords": ["brand"],
+                "exclude_keywords": [],
+                "risk_words": ["outage"],
+            },
+            {
+                **store.raw_posts[1],
+                "id": 3,
+                "external_id": "post-3",
+                "url": "https://example.com/3",
+                "text": "brand internal memo",
+                "keywords": ["brand"],
+                "exclude_keywords": ["internal"],
+                "risk_words": ["outage"],
+            },
+        ]
+        gateway = _RecordingEligibleGateway()
+        worker = MLWorker(
+            store=store,
+            clickhouse_store=_ClickHouseRecorder(),
+            gateway=gateway,
+            normalizer=MLResultNormalizer(store),
+            batch_size=10,
+        )
+
+        result = await worker.run_once()
+
+        self.assertEqual(gateway.calls, [[1]])
+        self.assertEqual(result["stored_count"], 3)
+        self.assertEqual(store.failed_rows, [])
+        self.assertEqual(
+            [(row["raw_post_id"], row["relevance_label"], row["has_risk_words"]) for row in store.persisted_rows],
+            [
+                (2, "irrelevant", True),
+                (3, "irrelevant", False),
+                (1, "relevant", False),
+            ],
+        )
+
+    async def test_run_once_keeps_transient_ml_items_retryable_when_filtered_items_exist(self) -> None:
+        store = _WorkerStore()
+        store.raw_posts = [
+            {
+                **store.raw_posts[0],
+                "id": 1,
+                "text": "service outage",
+                "keywords": ["brand"],
+                "exclude_keywords": [],
+                "risk_words": ["outage"],
+            },
+            {
+                **store.raw_posts[1],
+                "id": 2,
+                "text": "brand outage",
+                "keywords": ["brand"],
+                "exclude_keywords": [],
+                "risk_words": ["outage"],
+            },
+        ]
+        worker = MLWorker(
+            store=store,
+            clickhouse_store=_ClickHouseRecorder(),
+            gateway=_TransientFailureGateway(),
+            normalizer=MLResultNormalizer(store),
+            batch_size=10,
+        )
+
+        result = await worker.run_once()
+
+        self.assertEqual(result["stored_count"], 1)
+        self.assertEqual(store.failed_rows, [])
+        self.assertEqual(
+            [(row["raw_post_id"], row["relevance_label"]) for row in store.persisted_rows],
+            [(1, "irrelevant")],
+        )
