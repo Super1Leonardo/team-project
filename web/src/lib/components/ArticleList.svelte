@@ -1,7 +1,4 @@
-<script lang="ts">
-	import { resolve } from '$app/paths';
-	import Article from '$lib/components/Article.svelte';
-
+<script lang="ts" module>
 	// Типы данных (взяты из твоего +page.svelte)
 	export interface Duplicate {
 		source: string;
@@ -21,8 +18,11 @@
 		text: string;
 		duplicates: Duplicate[];
 	}
+</script>
 
-	// Svelte 5 Rune для приема массива с дефолтным пустым значением
+<script lang="ts">
+	import Article from '$lib/components/Article.svelte';
+
 	let { clusters = [] }: { clusters: Cluster[] } = $props();
 </script>
 

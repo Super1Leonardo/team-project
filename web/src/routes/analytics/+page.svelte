@@ -4,14 +4,14 @@
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
+	import { Button } from '$lib/components/ui/shadcn/button';
 
 	let { data } = $props();
 
-	// Данные уже отфильтрованы и сагрегированы на сервере
 	let chartData = $derived(data.timeline);
 	let hasNoTimelineData = $derived(data.timeline.length === 0);
+	let hasError = $derived(!!data.error);
 
-	// Для передачи в график текущего состояния
 	let currentConfidence = $derived(page.url.searchParams.get('confidence') || '0.7');
 </script>
 
@@ -24,7 +24,14 @@
 		<FilterBar />
 	</div>
 
-	{#if hasNoTimelineData}
+	{#if hasError}
+		<div class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
+			<p class="mb-4 text-destructive">{data.error?.message || 'Произошла ошибка при загрузке данных'}</p>
+			<Button variant="outline" onclick={() => window.location.reload()}>
+				Повторить
+			</Button>
+		</div>
+	{:else if hasNoTimelineData}
 		<div class="rounded-lg border bg-card py-8 text-center text-muted-foreground">
 			Нет данных для отображения по выбранным фильтрам
 		</div>

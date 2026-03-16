@@ -1,17 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
+import { api } from '$lib/api/client';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
-
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T | null> {
-	try {
-		const response = await fetch(url, options);
-		if (!response.ok) return null;
-		const data = await response.json();
-		return data.data ?? data;
-	} catch {
-		return null;
-	}
-}
 
 interface Project {
 	id: number;
@@ -35,21 +25,32 @@ interface Source {
 	raw_posts_count: number | null;
 }
 
-async function getOrCreateProject(): Promise<Project | null> {
-	const projects = await fetchJson<Project[]>(`${API_BASE_URL}/api/projects`);
-	if (!projects || projects.length === 0) {
-		const newProject = await fetchJson<Project>(`${API_BASE_URL}/api/projects`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'Мой проект', keywords: [], exclude_keywords: [] })
-		});
-		return newProject;
+async function getOrCreateProject(): Promise<{ project: Project | null; error?: string }> {
+	const projectsRes = await api.get<Project[]>(`${API_BASE_URL}/api/projects`);
+
+	if (projectsRes.error) {
+		return { project: null, error: projectsRes.error.message };
 	}
-	return projects[0];
+
+	if (!projectsRes.data || projectsRes.data.length === 0) {
+		const createRes = await api.post<Project>(`${API_BASE_URL}/api/projects`, {
+			name: 'Мой проект',
+			keywords: [],
+			exclude_keywords: [],
+		});
+
+		if (createRes.error) {
+			return { project: null, error: createRes.error.message };
+		}
+
+		return { project: createRes.data ?? null };
+	}
+
+	return { project: projectsRes.data[0] };
 }
 
 async function fetchHealth() {
-	return fetchJson<{
+	const healthRes = await api.get<{
 		status: string;
 		postgres: string;
 		clickhouse: string;
@@ -58,42 +59,56 @@ async function fetchHealth() {
 		ml_error: string | null;
 		ml_queue_size: number;
 	}>(`${API_BASE_URL}/api/health`);
+
+	return healthRes.data ?? null;
 }
 
 export const load: PageServerLoad = async () => {
-	const project = await getOrCreateProject();
-	const sources = project
-		? ((await fetchJson<Source[]>(`${API_BASE_URL}/api/projects/${project.id}/sources`)) ?? [])
-		: [];
+	const { project, error: projectError } = await getOrCreateProject();
+
+	let sources: Source[] = [];
+	let error: string | undefined;
+
+	if (projectError) {
+		error = projectError;
+	} else if (project) {
+		const sourcesRes = await api.get<Source[]>(
+			`${API_BASE_URL}/api/projects/${project.id}/sources`
+		);
+
+		if (sourcesRes.error) {
+			error = sourcesRes.error.message;
+		} else {
+			sources = sourcesRes.data ?? [];
+		}
+	}
+
 	const health = await fetchHealth();
 
 	return {
 		project,
 		sources,
-		health
+		health,
+		error: error ? { message: error } : undefined,
 	};
 };
 
 export const actions: Actions = {
 	toggleSource: async ({ request }) => {
-		const data = await request.formData();
-		const sourceId = parseInt(data.get('source_id') as string);
-		const projectId = parseInt(data.get('project_id') as string);
-		const currentState = data.get('current_state') === 'true';
+		const formData = await request.formData();
+		const sourceId = parseInt(formData.get('source_id') as string);
+		const projectId = parseInt(formData.get('project_id') as string);
+		const currentState = formData.get('current_state') === 'true';
 
-		const result = await fetchJson<Source>(
+		const result = await api.patch<Source>(
 			`${API_BASE_URL}/api/projects/${projectId}/sources/${sourceId}`,
-			{
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ is_active: !currentState })
-			}
+			{ is_active: !currentState }
 		);
 
-		if (!result) {
-			return { success: false, error: 'Failed to update source' };
+		if (result.error) {
+			return { success: false, error: result.error.message };
 		}
 
 		return { success: true };
-	}
+	},
 };

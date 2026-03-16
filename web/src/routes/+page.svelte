@@ -2,17 +2,18 @@
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import ArticleList from '$lib/components/ArticleList.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
+	import { Button } from '$lib/components/ui/shadcn/button';
+	import { toast } from 'svelte-sonner';
 	import type { PageData } from './$types';
 	import type { Cluster } from '$lib/components/ArticleList.svelte';
 
-	// Строгий контракт ответа от API (на базе схемы БД из diff.txt и ARCHITECTURE.md)
 	interface BackendMention {
 		id: number;
 		raw_post_id: number;
 		project_id: number;
 		source_id: number;
 		source_type: 'telegram' | 'vk' | 'dzen' | 'rss';
-		source_name?: string; // может приходить из JOIN
+		source_name?: string;
 		url: string | null;
 		title: string | null;
 		text: string;
@@ -26,14 +27,13 @@
 		risk_words?: string[];
 		dedup_group_id: number | null;
 		is_primary: boolean;
-		dedup?: { duplicates: any[] }; // Если бэкенд отдает вложенные дубли
+		dedup?: { duplicates: any[] };
 	}
 
 	let { data }: { data: PageData } = $props();
 
-	// Трансформируем строгий ответ бэкенда в формат пропсов компонента ArticleList
 	let clusters: Cluster[] = $derived(
-		(data.mentions as BackendMention[]).map((m) => ({
+		(data.mentions as BackendMention[] || []).map((m) => ({
 			id: String(m.id),
 			title: m.title || '',
 			source: m.source_name || m.source_type,
@@ -45,6 +45,8 @@
 			duplicates: m.dedup?.duplicates || []
 		}))
 	);
+
+	const hasError = $derived(!!data.error);
 </script>
 
 <div class="container mx-auto max-w-3xl py-4">
@@ -54,5 +56,14 @@
 		<FilterBar />
 	</div>
 
-	<ArticleList {clusters} />
+	{#if hasError}
+		<div class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
+			<p class="mb-4 text-destructive">{data.error?.message || 'Произошла ошибка при загрузке данных'}</p>
+			<Button variant="outline" onclick={() => window.location.reload()}>
+				Повторить
+			</Button>
+		</div>
+	{:else}
+		<ArticleList {clusters} />
+	{/if}
 </div>

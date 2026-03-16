@@ -4,6 +4,7 @@
 	import Heading from '$lib/components/ui/Heading.svelte';
 	import { Switch } from '$lib/components/ui/shadcn/switch';
 	import Spinner from '$lib/components/ui/shadcn/spinner/spinner.svelte';
+	import { Button } from '$lib/components/ui/shadcn/button';
 	import { Send, MessageCircle, Radio, Server, Database, BrainCircuit } from '@lucide/svelte';
 	import {
 		tSourceType,
@@ -21,6 +22,7 @@
 	const project = $derived(data.project);
 	const health = $derived(data.health);
 	const healthStatus = $derived(health?.status ?? null);
+	const pageError = $derived(data.error);
 
 	function getHealthColor(status: string | null): string {
 		if (!status) return 'bg-yellow-500';
@@ -82,6 +84,14 @@
 <div class="container mx-auto max-w-3xl py-4">
 	<Heading>Источники и статус сбора</Heading>
 
+	{#if pageError}
+		<div class="mb-4 rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
+			<p class="mb-4 text-destructive">{pageError.message || 'Произошла ошибка при загрузке данных'}</p>
+			<Button variant="outline" onclick={() => window.location.reload()}>
+				Повторить
+			</Button>
+		</div>
+	{:else}
 	<div class="mb-4 rounded-lg border bg-card p-3">
 		<div class="mb-2 flex items-center gap-2">
 			<span
@@ -201,4 +211,5 @@
 			</div>
 		{/if}
 	</section>
+	{/if}
 </div>

@@ -1,17 +1,7 @@
 import type { PageServerLoad } from './$types';
+import { api } from '$lib/api/client';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
-
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T | null> {
-	try {
-		const response = await fetch(url, options);
-		if (!response.ok) return null;
-		const data = await response.json();
-		return data.data ?? data; // SvelteKit ожидает данные, разворачиваем API-конверт
-	} catch {
-		return null;
-	}
-}
 
 interface Project {
 	id: number;
@@ -21,51 +11,64 @@ interface Project {
 	risk_words: string[];
 }
 
-async function getOrCreateProject(): Promise<Project | null> {
-	const projects = await fetchJson<Project[]>(`${API_BASE_URL}/api/projects`);
-	if (!projects || projects.length === 0) {
-		return await fetchJson<Project>(`${API_BASE_URL}/api/projects`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ 
-				name: "Мой проект", 
-				keywords: ["сбербанк", "sberbank", "сбер"], 
-				exclude_keywords: [], 
-				risk_words: [] 
-			})
-		});
+async function getOrCreateProject(): Promise<{ project: Project | null; error?: string }> {
+	const projectsRes = await api.get<Project[]>(`${API_BASE_URL}/api/projects`);
+
+	if (projectsRes.error) {
+		return { project: null, error: projectsRes.error.message };
 	}
-	return projects[0];
+
+	if (!projectsRes.data || projectsRes.data.length === 0) {
+		const createRes = await api.post<Project>(`${API_BASE_URL}/api/projects`, {
+			name: 'Мой проект',
+			keywords: ['сбербанк', 'sberbank', 'сбер'],
+			exclude_keywords: [],
+			risk_words: [],
+		});
+
+		if (createRes.error) {
+			return { project: null, error: createRes.error.message };
+		}
+
+		return { project: createRes.data ?? null };
+	}
+
+	return { project: projectsRes.data[0] };
 }
 
 export const load: PageServerLoad = async ({ url }) => {
-	const project = await getOrCreateProject();
-	let mentions: any[] = [];
+	const { project, error: projectError } = await getOrCreateProject();
 
-	if (project) {
-		// 1. Извлекаем параметры фильтрации из URL
+	let mentions: any[] = [];
+	let error: string | undefined;
+
+	if (projectError) {
+		error = projectError;
+	} else if (project) {
 		const confidence = url.searchParams.get('confidence');
 		const period = url.searchParams.get('period');
-		
-		// 2. Формируем строку запроса (Query String)
+		const sentiment = url.searchParams.get('sentiment');
+
 		const queryParams = new URLSearchParams();
-		queryParams.set('limit', '50'); // Дефолтный лимит
-		
-		// Если параметры есть в URL, прокидываем их в API
+		queryParams.set('limit', '50');
+
 		if (confidence) queryParams.set('confidence', confidence);
 		if (period) queryParams.set('period', period);
+		if (sentiment) queryParams.set('sentiment', sentiment);
 
-		// 3. Запрашиваем отфильтрованные данные из PostgreSQL через FastAPI
-		const response = await fetchJson<any[]>(
+		const mentionsRes = await api.get<any[]>(
 			`${API_BASE_URL}/api/projects/${project.id}/mentions?${queryParams.toString()}`
 		);
-		
-		if (Array.isArray(response)) {
-			mentions = response;
+
+		if (mentionsRes.error) {
+			error = mentionsRes.error.message;
+		} else if (mentionsRes.data) {
+			mentions = mentionsRes.data;
 		}
 	}
 
 	return {
-		mentions
+		mentions,
+		error: error ? { message: error } : undefined,
 	};
 };
