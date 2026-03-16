@@ -47,7 +47,7 @@ DEFAULT_BOOTSTRAP_SOURCES = (
     },
     {
         "source_type": "rss",
-        "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/"},
+        "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/rss.xml"},
         "is_active": True,
         "poll_interval_s": 300,
     },
