@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from backend.app.core.exceptions import ExternalMLResponseError
@@ -384,8 +386,12 @@ class MLResultNormalizer:
 
     @staticmethod
     def _contains_any(text: str, words: list[str]) -> bool:
-        normalized = " ".join(text.casefold().split())
-        return any(" ".join(word.casefold().split()) in normalized for word in words)
+        normalized_text = MLResultNormalizer._normalize_text(text)
+        for word in words:
+            pattern = MLResultNormalizer._compile_keyword_pattern(word)
+            if pattern is not None and pattern.search(normalized_text):
+                return True
+        return False
 
     @classmethod
     def _matches_keywords(cls, text: str, keywords: list[str]) -> bool:
@@ -404,3 +410,23 @@ class MLResultNormalizer:
             queue_item["exclude_keywords"],
         )
         return has_keyword_match and not has_excluded_match
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return " ".join(value.casefold().split())
+
+    @staticmethod
+    def _is_word_char(value: str) -> bool:
+        return value.isalnum() or value == "_"
+
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _compile_keyword_pattern(word: str) -> re.Pattern[str] | None:
+        normalized_word = MLResultNormalizer._normalize_text(word)
+        if not normalized_word:
+            return None
+
+        escaped = re.escape(normalized_word).replace(r"\ ", r"\s+")
+        prefix = r"(?<!\w)" if MLResultNormalizer._is_word_char(normalized_word[0]) else ""
+        suffix = r"(?!\w)" if MLResultNormalizer._is_word_char(normalized_word[-1]) else ""
+        return re.compile(prefix + escaped + suffix)

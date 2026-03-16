@@ -262,6 +262,25 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual([row["has_risk_words"] for row in rows], [True, False])
         self.assertEqual([row["embedding"] for row in rows], [None, None])
 
+    def test_keyword_matching_uses_word_boundaries_instead_of_substrings(self) -> None:
+        self.assertTrue(self.normalizer._contains_any("Brand outage update", ["brand"]))
+        self.assertFalse(self.normalizer._contains_any("Rebranding update", ["brand"]))
+        self.assertFalse(self.normalizer._contains_any("Superoutage alert", ["outage"]))
+
+    def test_keyword_matching_supports_phrases_with_flexible_whitespace(self) -> None:
+        self.assertTrue(
+            self.normalizer._contains_any(
+                "Brand   Radar\nmajor outage",
+                ["brand radar"],
+            )
+        )
+        self.assertTrue(
+            self.normalizer._contains_any(
+                "Brand-Radar major outage",
+                ["brand-radar"],
+            )
+        )
+
     @staticmethod
     def _remote_result() -> dict[str, Any]:
         return {
