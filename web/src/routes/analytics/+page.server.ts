@@ -38,19 +38,26 @@ async function getOrCreateProject(): Promise<Project | null> {
   return projects[0];
 }
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
   const project = await getOrCreateProject();
 
   let timeline: any[] = [];
-  let kpi = {
-    total: 0,
-    avgMlScore: "0.0",
-    spikeAlerts: 0,
-  };
+  let kpi = { total: 0, avgMlScore: "0.0", spikeAlerts: 0 };
 
   if (project) {
+    // 1. Берем фильтры из URL (как в ленте)
+    const confidence = url.searchParams.get('confidence') || '0.7';
+    const period = url.searchParams.get('period') || '7d';
+
+    const queryParams = new URLSearchParams({
+      limit: '500', // Для графика нужно больше данных
+      confidence,
+      period
+    });
+
+    // 2. Запрашиваем уже отфильтрованные данные
     const response = await fetchJson<any[]>(
-      `${API_BASE_URL}/api/projects/${project.id}/mentions?limit=500`,
+      `${API_BASE_URL}/api/projects/${project.id}/mentions?${queryParams.toString()}`
     );
     const mentions = Array.isArray(response) ? response : [];
 
@@ -59,27 +66,23 @@ export const load: PageServerLoad = async () => {
     let totalScore = 0;
     const daysMap: Record<string, any> = {};
 
-    // Агрегируем метрики
+    // 3. Агрегируем метрики
     mentions.forEach((m) => {
-      totalScore += m.relevance_score || 0;
+      // Поддерживаем оба формата (на случай если FastAPI возвращает relevance_score)
+      const score = m.relevance_score ?? m.ml_confidence ?? 0;
+      totalScore += score;
 
-      const dateStr = new Date(m.published_at).toISOString().split("T")[0];
+      const dateStr = new Date(m.published_at || m.publishedAt).toISOString().split("T")[0];
       if (!daysMap[dateStr]) {
-        daysMap[dateStr] = {
-          date: dateStr,
-          positive: 0,
-          negative: 0,
-          neutral: 0,
-          mlConfidenceSum: 0,
-          count: 0,
-        };
+        daysMap[dateStr] = { date: dateStr, positive: 0, negative: 0, neutral: 0, mlConfidenceSum: 0, count: 0 };
       }
 
-      if (m.sentiment_label === "positive") daysMap[dateStr].positive++;
-      else if (m.sentiment_label === "negative") daysMap[dateStr].negative++;
+      const sentiment = m.sentiment_label ?? m.sentiment ?? 'neutral';
+      if (sentiment === "positive") daysMap[dateStr].positive++;
+      else if (sentiment === "negative") daysMap[dateStr].negative++;
       else daysMap[dateStr].neutral++;
 
-      daysMap[dateStr].mlConfidenceSum += m.relevance_score || 0;
+      daysMap[dateStr].mlConfidenceSum += score;
       daysMap[dateStr].count++;
     });
 
@@ -97,8 +100,5 @@ export const load: PageServerLoad = async () => {
     })).sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  return {
-    timeline,
-    kpi,
-  };
+  return { timeline, kpi };
 };

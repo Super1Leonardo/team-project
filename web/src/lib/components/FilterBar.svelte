@@ -1,44 +1,63 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/shadcn/select';
-	import { minMlScore, timeframe } from '$lib/stores/filters';
 
-	let minMlScoreValue = $state('0.7');
-	let timeframeValue = $state('7d');
+	// Синхронизация с URL (Svelte 5 Runes)
+	let currentConfidence = $derived(page.url.searchParams.get('confidence') || '0.7');
+	let currentPeriod = $derived(page.url.searchParams.get('period') || '7d');
 
-	minMlScore.subscribe(v => minMlScoreValue = v);
-	timeframe.subscribe(v => timeframeValue = v);
-
-	function updateMinMlScore(v: string) {
-		minMlScore.set(v);
-	}
-
-	function updateTimeframe(v: string) {
-		timeframe.set(v);
+	// При изменении селекта обновляем URL, SvelteKit сам перезапустит load-функцию
+	function updateFilter(key: string, value: string) {
+		const url = new URL(page.url);
+		url.searchParams.set(key, value);
+		// keepFocus и noScroll сохраняют UX "бесшовного" обновления
+		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
 	}
 </script>
 
-<div class="flex items-center flex-wrap gap-4">
-	<div class="text-lg font-semibold">Фильтры:</div>
+<div class="flex w-fit flex-wrap items-center gap-4 rounded-lg border bg-card p-4">
+	<div class="flex flex-col gap-1.5">
+		<span class="text-xs font-medium text-muted-foreground">Уверенность ML (Relevance)</span>
+		<Select.Root
+			type="single"
+			value={currentConfidence}
+			onValueChange={(v) => updateFilter('confidence', v)}
+		>
+			<Select.Trigger class="w-45">
+				{currentConfidence === '0.5'
+					? 'Средняя (≥ 50%)'
+					: currentConfidence === '0.7'
+						? 'Высокая (≥ 70%)'
+						: 'Строгая (≥ 90%)'}
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="0.5">Средняя (≥ 50%)</Select.Item>
+				<Select.Item value="0.7">Высокая (≥ 70%)</Select.Item>
+				<Select.Item value="0.9">Строгая (≥ 90%)</Select.Item>
+			</Select.Content>
+		</Select.Root>
+	</div>
 
-	<Select.Root type="single" value={minMlScoreValue} onValueChange={updateMinMlScore}>
-		<Select.Trigger class="w-50">
-			ML Уверенность: &ge; {minMlScoreValue}
-		</Select.Trigger>
-		<Select.Content>
-			<Select.Item value="0.5">&ge; 0.5 (Все данные)</Select.Item>
-			<Select.Item value="0.7">&ge; 0.7 (Базовая норма)</Select.Item>
-			<Select.Item value="0.9">&ge; 0.9 (Высокая точность)</Select.Item>
-		</Select.Content>
-	</Select.Root>
-
-	<Select.Root type="single" value={timeframeValue} onValueChange={updateTimeframe}>
-		<Select.Trigger class="w-40">
-			Период: {timeframeValue}
-		</Select.Trigger>
-		<Select.Content>
-			<Select.Item value="24h">За 24 часа</Select.Item>
-			<Select.Item value="7d">За 7 дней</Select.Item>
-			<Select.Item value="30d">За 30 дней</Select.Item>
-		</Select.Content>
-	</Select.Root>
+	<div class="flex flex-col gap-1.5">
+		<span class="text-xs font-medium text-muted-foreground">Период анализа</span>
+		<Select.Root
+			type="single"
+			value={currentPeriod}
+			onValueChange={(v) => updateFilter('period', v)}
+		>
+			<Select.Trigger class="w-45">
+				{currentPeriod === '24h'
+					? 'Последние 24 часа'
+					: currentPeriod === '7d'
+						? 'Последние 7 дней'
+						: 'Последние 30 дней'}
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="24h">Последние 24 часа</Select.Item>
+				<Select.Item value="7d">Последние 7 дней</Select.Item>
+				<Select.Item value="30d">Последние 30 дней</Select.Item>
+			</Select.Content>
+		</Select.Root>
+	</div>
 </div>
