@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     external_ml_base_url: str = "http://178.154.216.255"
     external_ml_predict_path: str = "/predict"
     external_ml_timeout_seconds: float = 60.0
+    external_ml_connect_timeout_seconds: float = 3.0
+    external_ml_health_timeout_seconds: float = 2.0
     collector_per_source_limit: int = 100
     collector_idle_sleep_seconds: float = 5.0
     ml_worker_batch_size: int = 100

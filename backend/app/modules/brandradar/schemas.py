@@ -277,4 +277,7 @@ class BrandRadarHealthResponse(BaseModel):
     status: Literal["healthy", "degraded", "unhealthy"]
     postgres: Literal["healthy", "unhealthy"]
     clickhouse: Literal["healthy", "unhealthy"]
+    ml: Literal["healthy", "unhealthy"]
+    ml_url: str
+    ml_error: str | None = None
     ml_queue_size: int
