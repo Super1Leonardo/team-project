@@ -28,10 +28,8 @@
 
 <div class="flex flex-col gap-4">
 	{#if clusters.length === 0}
-		<div
-			class="mt-4 flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
-		>
-			Нет упоминаний по заданным фильтрам
+		<div class="rounded-lg border bg-card py-8 text-center text-muted-foreground">
+			Нет данных для отображения по выбранным фильтрам
 		</div>
 	{:else}
 		{#each clusters as clusterData (clusterData.id)}

@@ -14,7 +14,7 @@
 
 	const links = $derived([
 		{
-			title: 'Новости',
+			title: 'Лента',
 			url: buildUrl('/')
 		},
 		{
