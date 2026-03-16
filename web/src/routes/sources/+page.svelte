@@ -5,7 +5,7 @@
 	import { Switch } from '$lib/components/ui/shadcn/switch';
 	import Spinner from '$lib/components/ui/shadcn/spinner/spinner.svelte';
 	import { Button } from '$lib/components/ui/shadcn/button';
-	import { Send, MessageCircle, Radio, Server, Database, BrainCircuit } from '@lucide/svelte';
+	import { Send, MessageCircle, Radio, Server, Database, BrainCircuit, Globe, Sparkle } from '@lucide/svelte';
 	import {
 		tSourceType,
 		tSourceStatus,
@@ -17,7 +17,7 @@
 
 	let { data } = $props();
 
-	let isSubmitting = $state(false);
+	let submittingSourceId = $state<number | null>(null);
 
 	const project = $derived(data.project);
 	const health = $derived(data.health);
@@ -77,11 +77,17 @@
 		if (source.source_type === 'rss') {
 			return String(config.url || config.feed_url || 'Нет URL');
 		}
+		if (source.source_type === 'website') {
+			return String(config.url || 'Нет URL');
+		}
+		if (source.source_type === 'dzen') {
+			return String(config.channel || config.blog_id || 'Нет канала');
+		}
 		return 'Неизвестно';
 	}
 </script>
 
-<div class="container mx-auto max-w-3xl py-4">
+<div class="container mx-auto max-w-3xl px-4 py-4">
 	<Heading>Источники и статус сбора</Heading>
 
 	{#if pageError}
@@ -104,7 +110,7 @@
 				>Статус системы: {healthStatus ? tHealthStatus(healthStatus) : 'Неизвестно'}</span
 			>
 		</div>
-		<div class="mb-2 flex gap-4 text-sm text-muted-foreground">
+		<div class="mb-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
 			<div class="flex items-center gap-1">
 				<Database class="h-4 w-4" />
 				<span>PostgreSQL: {health?.postgres ? tDbStatus(health.postgres) : '?'}</span>
@@ -118,7 +124,7 @@
 				<span>ML сервис: {health?.ml ? tDbStatus(health.ml) : '?'}</span>
 			</div>
 		</div>
-		<div class="flex gap-4 text-sm text-muted-foreground">
+		<div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
 			<div class="flex items-center gap-1">
 				<BrainCircuit class="h-4 w-4" />
 				<span>ML очередь: {health?.ml_queue_size ?? '?'}</span>
@@ -145,6 +151,10 @@
 									<MessageCircle class="h-5 w-5" />
 								{:else if source.source_type === 'rss'}
 									<Radio class="h-5 w-5" />
+								{:else if source.source_type === 'website'}
+									<Globe class="h-5 w-5" />
+								{:else if source.source_type === 'dzen'}
+									<Sparkle class="h-5 w-5" />
 								{/if}
 							</div>
 							<div>
@@ -171,13 +181,13 @@
 							action="?/toggleSource"
 							id="toggle-form-{source.id}"
 							use:enhance={() => {
-								isSubmitting = true;
+								submittingSourceId = source.id;
 								return async ({ result, update }) => {
 									if (result.type === 'failure') {
 										toast.error('Ошибка при обновлении источника');
 									}
 									await update();
-									isSubmitting = false;
+									submittingSourceId = null;
 								};
 							}}
 						>
@@ -185,12 +195,12 @@
 							<input type="hidden" name="project_id" value={project?.id} />
 							<input type="hidden" name="current_state" value={String(source.is_active)} />
 							<div class="flex items-center gap-2">
-								{#if isSubmitting}
+								{#if submittingSourceId === source.id}
 									<Spinner class="size-4" />
 								{/if}
 								<Switch
 									checked={source.is_active}
-									disabled={isSubmitting}
+									disabled={submittingSourceId === source.id}
 									onCheckedChange={() => {
 										const form = document.getElementById(
 											'toggle-form-' + source.id

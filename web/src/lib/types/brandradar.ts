@@ -1,4 +1,4 @@
-export type SourceType = "telegram" | "vk" | "dzen" | "rss";
+export type SourceType = "telegram" | "vk" | "dzen" | "rss" | "website";
 export type RelevanceLabel = "relevant" | "irrelevant";
 export type SentimentLabel = "positive" | "neutral" | "negative";
 
