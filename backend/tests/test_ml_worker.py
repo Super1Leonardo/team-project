@@ -10,6 +10,9 @@ from backend.app.workers.ml_worker import MLWorker
 
 
 class _DedupFreeStore:
+    def find_similar_clusters(self, project_id: int, embedding: list[float]) -> list[dict[str, Any]]:
+        return []
+
     def find_similar_mentions(self, project_id: int, embedding: list[float]) -> list[dict[str, Any]]:
         return []
 

@@ -14,6 +14,7 @@ from backend.app.modules.brandradar.schemas import (
     MLRemotePredictResponse,
     MLResultsPushRequest,
     MLResultsPushResponse,
+    MentionClusterResponse,
     MentionResponse,
     MentionConfidenceThreshold,
     MentionPeriod,
@@ -497,6 +498,37 @@ async def list_mentions(
     return _envelope(
         mentions_page["items"],
         total=mentions_page["total"],
+        page=page,
+        page_size=effective_page_size,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/clusters",
+    response_model=ApiEnvelope[list[MentionClusterResponse]],
+)
+async def list_clusters(
+    project_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    confidence: MentionConfidenceThreshold | None = Query(default=None),
+    period: MentionPeriod | None = Query(default=None),
+    sentiment: MentionSentiment | None = Query(default=None),
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    effective_page_size = page_size or limit or 100
+    clusters_page = await service.list_clusters(
+        project_id,
+        page=page,
+        page_size=effective_page_size,
+        confidence_threshold=confidence.threshold if confidence else None,
+        published_after=(datetime.now(UTC) - period.delta) if period else None,
+        sentiment_label=sentiment.value if sentiment else None,
+    )
+    return _envelope(
+        clusters_page["items"],
+        total=clusters_page["total"],
         page=page,
         page_size=effective_page_size,
     )

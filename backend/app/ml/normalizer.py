@@ -24,9 +24,11 @@ class MLResultNormalizer:
         store: BrandRadarPostgresStore,
         *,
         dedup_threshold: float = 0.15,
+        cluster_threshold: float | None = None,
     ):
         self.store = store
         self.dedup_threshold = dedup_threshold
+        self.cluster_threshold = cluster_threshold or dedup_threshold
 
     @staticmethod
     def build_queue_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -241,20 +243,27 @@ class MLResultNormalizer:
         if relevance_label != "relevant" or embedding is None:
             return None, True
 
-        candidates = self.store.find_similar_mentions(project_id, embedding)
-        if not candidates:
+        cluster_candidates = self.store.find_similar_clusters(project_id, embedding)
+        if cluster_candidates:
+            best_cluster = cluster_candidates[0]
+            cluster_distance = float(best_cluster["distance"])
+            if cluster_distance < self.cluster_threshold:
+                return int(best_cluster["id"]), False
+
+        mention_candidates = self.store.find_similar_mentions(project_id, embedding)
+        if not mention_candidates:
             return None, True
 
-        best = candidates[0]
-        distance = float(best["distance"])
-        if distance >= self.dedup_threshold:
+        best_mention = mention_candidates[0]
+        mention_distance = float(best_mention["distance"])
+        if mention_distance >= self.cluster_threshold:
             return None, True
 
-        group_id = best["dedup_group_id"]
+        group_id = best_mention["dedup_group_id"]
         if group_id is None:
             group_id = self.store.ensure_dedup_group_for_mention(
                 project_id,
-                int(best["id"]),
+                int(best_mention["id"]),
             )
 
         return int(group_id), False

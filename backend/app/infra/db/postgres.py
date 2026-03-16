@@ -134,6 +134,9 @@ class BrandRadarPostgresStore:
                             project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                             representative_mention_id BIGINT,
                             mention_count INT NOT NULL DEFAULT 1,
+                            centroid_embedding VECTOR(384),
+                            first_seen_at TIMESTAMPTZ,
+                            last_seen_at TIMESTAMPTZ,
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                         )
                         """
@@ -173,6 +176,24 @@ class BrandRadarPostgresStore:
                         """
                         ALTER TABLE mentions
                         ADD COLUMN IF NOT EXISTS clickhouse_synced_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE dedup_groups
+                        ADD COLUMN IF NOT EXISTS centroid_embedding VECTOR(384)
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE dedup_groups
+                        ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ
+                        """
+                    )
+                    cur.execute(
+                        """
+                        ALTER TABLE dedup_groups
+                        ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ
                         """
                     )
                     cur.execute(
@@ -217,6 +238,14 @@ class BrandRadarPostgresStore:
                         CREATE INDEX IF NOT EXISTS idx_mentions_embedding
                         ON mentions
                         USING ivfflat (embedding vector_cosine_ops)
+                        WITH (lists = 100)
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_dedup_groups_centroid_embedding
+                        ON dedup_groups
+                        USING ivfflat (centroid_embedding vector_cosine_ops)
                         WITH (lists = 100)
                         """
                     )
@@ -950,7 +979,7 @@ class BrandRadarPostgresStore:
         project_id: int,
         embedding: list[float],
         *,
-        lookback_days: int = 3,
+        lookback_days: int = 30,
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         embedding_literal = self._vector_literal(embedding)
@@ -967,9 +996,51 @@ class BrandRadarPostgresStore:
                     (m.embedding <=> CAST(%s AS vector)) AS distance
                 FROM mentions m
                 WHERE m.project_id = %s
+                  AND m.relevance_label = 'relevant'
                   AND m.embedding IS NOT NULL
+                  AND m.is_primary = TRUE
                   AND m.processed_at >= %s
                 ORDER BY m.embedding <=> CAST(%s AS vector)
+                LIMIT %s
+                """,
+                (
+                    embedding_literal,
+                    project_id,
+                    cutoff,
+                    embedding_literal,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+
+        return [dict(row) for row in rows]
+
+    def find_similar_clusters(
+        self,
+        project_id: int,
+        embedding: list[float],
+        *,
+        lookback_days: int = 30,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        embedding_literal = self._vector_literal(embedding)
+        cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    g.id,
+                    g.representative_mention_id,
+                    g.mention_count,
+                    g.first_seen_at,
+                    g.last_seen_at,
+                    (g.centroid_embedding <=> CAST(%s AS vector)) AS distance
+                FROM dedup_groups g
+                WHERE g.project_id = %s
+                  AND g.centroid_embedding IS NOT NULL
+                  AND COALESCE(g.last_seen_at, g.created_at) >= %s
+                ORDER BY g.centroid_embedding <=> CAST(%s AS vector)
                 LIMIT %s
                 """,
                 (
@@ -988,9 +1059,13 @@ class BrandRadarPostgresStore:
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT dedup_group_id
-                FROM mentions
-                WHERE id = %s AND project_id = %s
+                SELECT
+                    m.dedup_group_id,
+                    m.embedding,
+                    rp.published_at
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                WHERE m.id = %s AND m.project_id = %s
                 """,
                 (mention_id, project_id),
             )
@@ -1002,17 +1077,31 @@ class BrandRadarPostgresStore:
             if existing_group_id is not None:
                 return int(existing_group_id)
 
+            embedding_literal = (
+                self._vector_literal(row["embedding"])
+                if row["embedding"] is not None
+                else None
+            )
             cur.execute(
                 """
                 INSERT INTO dedup_groups (
                     project_id,
                     representative_mention_id,
-                    mention_count
+                    mention_count,
+                    centroid_embedding,
+                    first_seen_at,
+                    last_seen_at
                 )
-                VALUES (%s, %s, 1)
+                VALUES (%s, %s, 1, CAST(%s AS vector), %s, %s)
                 RETURNING id
                 """,
-                (project_id, mention_id),
+                (
+                    project_id,
+                    mention_id,
+                    embedding_literal,
+                    row["published_at"],
+                    row["published_at"],
+                ),
             )
             group_row = cur.fetchone()
             group_id = int(group_row["id"])
@@ -1204,36 +1293,7 @@ class BrandRadarPostgresStore:
                 )
 
             for group_id in touched_groups:
-                cur.execute(
-                    """
-                    UPDATE dedup_groups
-                    SET
-                        mention_count = (
-                            SELECT COUNT(*)
-                            FROM mentions
-                            WHERE dedup_group_id = %s
-                        ),
-                        representative_mention_id = COALESCE(
-                            (
-                                SELECT id
-                                FROM mentions
-                                WHERE dedup_group_id = %s
-                                  AND is_primary = TRUE
-                                ORDER BY processed_at ASC, id ASC
-                                LIMIT 1
-                            ),
-                            (
-                                SELECT id
-                                FROM mentions
-                                WHERE dedup_group_id = %s
-                                ORDER BY processed_at ASC, id ASC
-                                LIMIT 1
-                            )
-                        )
-                    WHERE id = %s
-                    """,
-                    (group_id, group_id, group_id, group_id),
-                )
+                self._refresh_dedup_group(cur, group_id)
 
             persisted_raw_post_ids = [int(item["raw_post_id"]) for item in mention_rows]
 
@@ -1262,6 +1322,138 @@ class BrandRadarPostgresStore:
             "stored_count": len(mention_rows),
             "projects": project_stats,
             "sync_rows": sync_rows,
+        }
+
+    def list_clusters(
+        self,
+        project_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+    ) -> dict[str, Any]:
+        conditions = [
+            "m.project_id = %s",
+            "m.relevance_label = 'relevant'",
+        ]
+        params: list[Any] = [project_id]
+
+        if confidence_threshold is not None:
+            conditions.append("m.relevance_score >= %s")
+            params.append(confidence_threshold)
+
+        if published_after is not None:
+            conditions.append("rp.published_at >= %s")
+            params.append(published_after)
+
+        if sentiment_label is not None:
+            conditions.append("m.sentiment_label = %s")
+            params.append(sentiment_label)
+
+        where_clause = " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        base_cte = f"""
+            WITH filtered_mentions AS (
+                SELECT
+                    m.id,
+                    m.raw_post_id,
+                    m.project_id,
+                    m.relevance_score,
+                    m.relevance_label,
+                    m.sentiment_score,
+                    m.sentiment_label,
+                    m.has_risk_words,
+                    m.dedup_group_id,
+                    m.is_primary,
+                    m.processed_at,
+                    rp.source_id,
+                    s.source_type,
+                    rp.external_id,
+                    rp.url,
+                    rp.title,
+                    rp.text,
+                    rp.author,
+                    rp.published_at,
+                    rp.collected_at,
+                    COALESCE(m.dedup_group_id, -m.id) AS cluster_id
+                FROM mentions m
+                JOIN raw_posts rp ON rp.id = m.raw_post_id
+                JOIN sources s ON s.id = rp.source_id
+                WHERE {where_clause}
+            ),
+            ranked_clusters AS (
+                SELECT
+                    fm.*,
+                    COUNT(*) OVER (PARTITION BY fm.cluster_id) AS mentions_count,
+                    MIN(fm.published_at) OVER (PARTITION BY fm.cluster_id) AS first_seen_at,
+                    MAX(fm.published_at) OVER (PARTITION BY fm.cluster_id) AS last_seen_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY fm.cluster_id
+                        ORDER BY
+                            CASE WHEN fm.is_primary THEN 0 ELSE 1 END,
+                            fm.processed_at DESC,
+                            fm.id DESC
+                    ) AS cluster_rank
+                FROM filtered_mentions fm
+            )
+        """
+
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                base_cte
+                + """
+                SELECT COUNT(*) AS total
+                FROM (
+                    SELECT DISTINCT cluster_id
+                    FROM filtered_mentions
+                ) clusters
+                """,
+                params,
+            )
+            total_row = cur.fetchone()
+
+            cur.execute(
+                base_cte
+                + """
+                SELECT
+                    rc.cluster_id,
+                    rc.dedup_group_id,
+                    rc.mentions_count,
+                    rc.first_seen_at,
+                    rc.last_seen_at,
+                    rc.id AS representative_mention_id,
+                    rc.raw_post_id,
+                    rc.project_id,
+                    rc.relevance_score,
+                    rc.relevance_label,
+                    rc.sentiment_score,
+                    rc.sentiment_label,
+                    rc.has_risk_words,
+                    rc.processed_at,
+                    rc.source_id,
+                    rc.source_type,
+                    rc.external_id,
+                    rc.url,
+                    rc.title,
+                    rc.text,
+                    rc.author,
+                    rc.published_at,
+                    rc.collected_at
+                FROM ranked_clusters rc
+                WHERE rc.cluster_rank = 1
+                ORDER BY rc.last_seen_at DESC, rc.representative_mention_id DESC
+                LIMIT %s
+                OFFSET %s
+                """,
+                [*params, page_size, offset],
+            )
+            rows = cur.fetchall()
+
+        return {
+            "items": [dict(row) for row in rows],
+            "total": int(total_row["total"]) if total_row is not None else 0,
         }
 
     def mark_raw_posts_ml_failed(self, failures: list[dict[str, Any]]) -> int:
@@ -1618,6 +1810,56 @@ class BrandRadarPostgresStore:
     @staticmethod
     def _vector_literal(embedding: list[float]) -> str:
         return "[" + ",".join(f"{value:.10f}" for value in embedding) + "]"
+
+    def _refresh_dedup_group(self, cur: psycopg.Cursor, group_id: int) -> None:
+        cur.execute(
+            """
+            UPDATE dedup_groups
+            SET
+                mention_count = (
+                    SELECT COUNT(*)
+                    FROM mentions
+                    WHERE dedup_group_id = %s
+                ),
+                representative_mention_id = COALESCE(
+                    (
+                        SELECT id
+                        FROM mentions
+                        WHERE dedup_group_id = %s
+                          AND is_primary = TRUE
+                        ORDER BY processed_at ASC, id ASC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT id
+                        FROM mentions
+                        WHERE dedup_group_id = %s
+                        ORDER BY processed_at ASC, id ASC
+                        LIMIT 1
+                    )
+                ),
+                first_seen_at = (
+                    SELECT MIN(rp.published_at)
+                    FROM mentions m
+                    JOIN raw_posts rp ON rp.id = m.raw_post_id
+                    WHERE m.dedup_group_id = %s
+                ),
+                last_seen_at = (
+                    SELECT MAX(rp.published_at)
+                    FROM mentions m
+                    JOIN raw_posts rp ON rp.id = m.raw_post_id
+                    WHERE m.dedup_group_id = %s
+                ),
+                centroid_embedding = (
+                    SELECT AVG(embedding)
+                    FROM mentions
+                    WHERE dedup_group_id = %s
+                      AND embedding IS NOT NULL
+                )
+            WHERE id = %s
+            """,
+            (group_id, group_id, group_id, group_id, group_id, group_id, group_id),
+        )
 
     @staticmethod
     def _source_config_key(source_config: dict[str, Any]) -> str:

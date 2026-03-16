@@ -9,12 +9,33 @@ from backend.app.ml.normalizer import MLResultNormalizer
 
 
 class _DedupFreeStore:
+    def find_similar_clusters(
+        self,
+        project_id: int,
+        embedding: list[float],
+    ) -> list[dict[str, Any]]:
+        return []
+
     def find_similar_mentions(
         self,
         project_id: int,
         embedding: list[float],
     ) -> list[dict[str, Any]]:
         return []
+
+
+class _ClusterMatchStore(_DedupFreeStore):
+    def find_similar_clusters(
+        self,
+        project_id: int,
+        embedding: list[float],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 77,
+                "distance": 0.18,
+            }
+        ]
 
 
 class MLResultNormalizerTests(unittest.TestCase):
@@ -183,6 +204,28 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["relevance_label"], "relevant")
         self.assertEqual(normalized[0]["sentiment_label"], "negative")
         self.assertEqual(normalized[0]["relevance_score"], 0.9419)
+
+    def test_normalize_remote_results_assigns_existing_cluster_for_similar_message(self) -> None:
+        normalizer = MLResultNormalizer(
+            _ClusterMatchStore(),
+            cluster_threshold=0.22,
+        )
+        normalized = normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "is_relevant": True,
+                    "relevance_score": 0.9,
+                    "sentiment": "neutral",
+                    "sentiment_score": 0.1,
+                    "embedding": [0.01] * 384,
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["dedup_group_id"], 77)
+        self.assertFalse(normalized[0]["is_primary"])
 
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(

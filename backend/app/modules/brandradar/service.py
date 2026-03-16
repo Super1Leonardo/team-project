@@ -364,6 +364,27 @@ class BrandRadarService:
             sentiment_label=sentiment_label,
         )
 
+    async def list_clusters(
+        self,
+        project_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+    ) -> dict[str, Any]:
+        await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.list_clusters,
+            project_id,
+            page=page,
+            page_size=page_size,
+            confidence_threshold=confidence_threshold,
+            published_after=published_after,
+            sentiment_label=sentiment_label,
+        )
+
     async def get_health(self) -> dict[str, Any]:
         postgres_status = "healthy"
         clickhouse_status = "healthy"

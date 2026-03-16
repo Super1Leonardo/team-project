@@ -48,6 +48,7 @@ def build_runtime(settings: Settings) -> ArchitectureRuntime:
     ml_normalizer = MLResultNormalizer(
         postgres_store,
         dedup_threshold=settings.ml_dedup_threshold,
+        cluster_threshold=settings.ml_cluster_threshold,
     )
     ml_worker = MLWorker(
         store=postgres_store,

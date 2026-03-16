@@ -105,6 +105,68 @@ def test_list_mentions_filters_before_pagination() -> None:
     assert data_params == [3, 0.7, published_after, "negative", 20, 20]
 
 
+def test_list_clusters_groups_similar_mentions_before_pagination() -> None:
+    published_after = datetime.now(UTC) - timedelta(days=30)
+    rows = [
+        {
+            "cluster_id": 77,
+            "dedup_group_id": 77,
+            "mentions_count": 4,
+            "first_seen_at": datetime.now(UTC) - timedelta(days=3),
+            "last_seen_at": datetime.now(UTC),
+            "representative_mention_id": 501,
+            "raw_post_id": 11,
+            "project_id": 3,
+            "relevance_score": 0.88,
+            "relevance_label": "relevant",
+            "sentiment_score": 0.41,
+            "sentiment_label": "negative",
+            "has_risk_words": True,
+            "source_id": 9,
+            "source_type": "telegram",
+            "external_id": "x-1",
+            "url": "https://example.com/x-1",
+            "title": "Cluster title",
+            "text": "Cluster body",
+            "author": "author",
+            "published_at": datetime.now(UTC),
+            "collected_at": datetime.now(UTC),
+            "processed_at": datetime.now(UTC),
+        }
+    ]
+    fake_cursor = FakeCursor(total=2, rows=rows)
+    store = BrandRadarPostgresStore(Settings())
+    store._connect = lambda *args, **kwargs: FakeConnection(fake_cursor)  # type: ignore[method-assign]
+
+    result = store.list_clusters(
+        3,
+        page=2,
+        page_size=10,
+        confidence_threshold=0.5,
+        published_after=published_after,
+        sentiment_label="negative",
+    )
+
+    assert result["total"] == 2
+    assert result["items"] == rows
+    assert len(fake_cursor.executed) == 2
+
+    count_query, count_params = fake_cursor.executed[0]
+    data_query, data_params = fake_cursor.executed[1]
+
+    assert "WITH filtered_mentions AS" in count_query
+    assert "SELECT DISTINCT cluster_id" in count_query
+    assert "m.relevance_label = 'relevant'" in count_query
+    assert "m.relevance_score >= %s" in count_query
+    assert "rp.published_at >= %s" in count_query
+    assert "m.sentiment_label = %s" in count_query
+    assert count_params == [3, 0.5, published_after, "negative"]
+
+    assert "ROW_NUMBER() OVER" in data_query
+    assert "mentions_count" in data_query
+    assert "WHERE rc.cluster_rank = 1" in data_query
+    assert data_params == [3, 0.5, published_after, "negative", 10, 10]
+
 class PersistMentionsCursor:
     def __init__(self) -> None:
         self.executed: list[tuple[str, object]] = []

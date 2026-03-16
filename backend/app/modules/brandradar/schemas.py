@@ -219,6 +219,32 @@ class MentionResponse(BaseModel):
     processed_at: datetime
 
 
+class MentionClusterResponse(BaseModel):
+    cluster_id: int
+    dedup_group_id: int | None = None
+    mentions_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    representative_mention_id: int
+    raw_post_id: int
+    project_id: int
+    source_id: int
+    source_type: SourceType
+    external_id: str
+    url: str | None = None
+    title: str | None = None
+    text: str
+    author: str | None = None
+    published_at: datetime
+    collected_at: datetime
+    relevance_score: float
+    relevance_label: RelevanceLabel
+    sentiment_score: float
+    sentiment_label: SentimentLabel
+    has_risk_words: bool
+    processed_at: datetime
+
+
 class MLQueueItem(BaseModel):
     raw_post_id: int
     source_id: int
