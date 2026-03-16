@@ -1036,15 +1036,22 @@ class BrandRadarPostgresStore:
                     f"raw_posts not found: {', '.join(str(item) for item in missing_ids)}"
                 )
 
-            already_processed = [
-                str(raw_post_id)
+            processable_raw_post_ids = {
+                raw_post_id
                 for raw_post_id, row in raw_posts.items()
-                if row["ml_processed"]
+                if not row["ml_processed"]
+            }
+            mention_rows = [
+                item
+                for item in mention_rows
+                if int(item["raw_post_id"]) in processable_raw_post_ids
             ]
-            if already_processed:
-                raise DomainValidationError(
-                    "raw_posts already processed: " + ", ".join(already_processed)
-                )
+            if not mention_rows:
+                return {
+                    "stored_count": 0,
+                    "projects": {},
+                    "sync_rows": [],
+                }
 
             sync_rows: list[dict[str, Any]] = []
             touched_groups: set[int] = set()
@@ -1195,6 +1202,8 @@ class BrandRadarPostgresStore:
                     (group_id, group_id, group_id, group_id),
                 )
 
+            persisted_raw_post_ids = [int(item["raw_post_id"]) for item in mention_rows]
+
             cur.execute(
                 """
                 UPDATE raw_posts
@@ -1203,7 +1212,7 @@ class BrandRadarPostgresStore:
                     ml_error = NULL
                 WHERE id = ANY(%s)
                 """,
-                (raw_post_ids,),
+                (persisted_raw_post_ids,),
             )
 
             for project_id, stats in project_stats.items():
