@@ -55,7 +55,7 @@
 				</Card.Header>
 				<Card.Content>
 					<div class="text-2xl font-bold text-destructive">{data.kpi.spikeAlerts}</div>
-					<p class="text-xs text-muted-foreground">Всплески негатива</p>
+					<p class="text-xs text-muted-foreground">Дней с негативом &gt; позитивом</p>
 				</Card.Content>
 			</Card.Root>
 
