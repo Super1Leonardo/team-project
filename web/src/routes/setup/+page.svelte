@@ -20,7 +20,7 @@
 	let refreshInterval = $state(
 		parseInt(
 			(typeof localStorage !== 'undefined' ? localStorage.getItem('feedRefreshInterval') : null) ||
-				'5',
+				'1',
 			10
 		)
 	);

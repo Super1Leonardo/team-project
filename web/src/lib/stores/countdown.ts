@@ -6,11 +6,11 @@ export const countdown = writable(0);
 export const countdownActive = writable(false);
 
 function getIntervalMinutes(): number {
-	if (typeof window === 'undefined') return 5;
+	if (typeof window === 'undefined') return 1;
 	const stored = localStorage.getItem('feedRefreshInterval');
-	if (!stored) return 5;
+	if (!stored) return 1;
 	const parsed = parseInt(stored, 10);
-	return isNaN(parsed) || parsed < 1 || parsed > 60 ? 5 : parsed;
+	return isNaN(parsed) || parsed < 1 || parsed > 60 ? 1 : parsed;
 }
 
 export function startCountdown(onRefresh: () => void): void {
