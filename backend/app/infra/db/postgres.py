@@ -1009,10 +1009,7 @@ class BrandRadarPostgresStore:
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
-                        CASE
-                            WHEN %s IS NULL THEN NULL
-                            ELSE CAST(%s AS vector)
-                        END,
+                        CAST(%s AS vector),
                         %s, %s, %s
                     )
                     ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -1048,7 +1045,6 @@ class BrandRadarPostgresStore:
                         item["sentiment_score"],
                         item["sentiment_label"],
                         item["has_risk_words"],
-                        embedding_literal,
                         embedding_literal,
                         item.get("dedup_group_id"),
                         item["is_primary"],

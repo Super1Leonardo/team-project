@@ -166,9 +166,6 @@ class MLWorker:
         if transient_errors and not mention_rows and not failures:
             raise transient_errors[0]
 
-        if failures and not mention_rows:
-            raise failures[0]["exception"]
-
         for failure in failures:
             logger.warning(
                 "ML failed for raw_post_id=%s: %s",
