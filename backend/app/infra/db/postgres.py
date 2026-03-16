@@ -779,6 +779,7 @@ class BrandRadarPostgresStore:
                     rp.raw_meta,
                     s.project_id,
                     s.source_type,
+                    p.name AS project_name,
                     p.keywords,
                     p.exclude_keywords,
                     p.risk_words

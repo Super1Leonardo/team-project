@@ -147,12 +147,24 @@ class MLWorker:
 
         mention_rows: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
+        transient_errors: list[Exception] = []
 
         for item in queue_items:
             try:
                 mention_rows.extend(await self._predict_and_normalize([item]))
             except Exception as exc:
+                if self._is_transient_ml_error(exc):
+                    transient_errors.append(exc)
+                    logger.warning(
+                        "Transient ML failure for raw_post_id=%s; leaving it in the queue: %s",
+                        item["raw_post_id"],
+                        exc,
+                    )
+                    continue
                 failures.append(self._build_failure(item, exc))
+
+        if transient_errors and not mention_rows and not failures:
+            raise transient_errors[0]
 
         if failures and not mention_rows:
             raise failures[0]["exception"]
@@ -176,13 +188,25 @@ class MLWorker:
         self,
         queue_items: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        remote_response = await self.gateway.predict(queue_items)
+        ml_queue_items, skipped_queue_items = await asyncio.to_thread(
+            self.normalizer.split_queue_items_for_ml,
+            queue_items,
+        )
+        mention_rows = await asyncio.to_thread(
+            self.normalizer.build_local_irrelevant_rows,
+            skipped_queue_items,
+        )
+        if not ml_queue_items:
+            return mention_rows
+
+        remote_response = await self.gateway.predict(ml_queue_items)
         remote_results = self.normalizer.extract_remote_results(remote_response)
-        return await asyncio.to_thread(
+        ml_rows = await asyncio.to_thread(
             self.normalizer.normalize_remote_results,
-            queue_items=queue_items,
+            queue_items=ml_queue_items,
             remote_results=remote_results,
         )
+        return mention_rows + ml_rows
 
     @staticmethod
     def _build_failure(queue_item: dict[str, Any], exc: Exception) -> dict[str, Any]:

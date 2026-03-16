@@ -27,6 +27,7 @@ class MLResultNormalizer:
                 "source_id": int(row["source_id"]),
                 "project_id": int(row["project_id"]),
                 "source_type": row["source_type"],
+                "company": row.get("company", row.get("project_name", "")),
                 "external_id": row["external_id"],
                 "url": row["url"],
                 "title": row["title"],
@@ -140,6 +141,45 @@ class MLResultNormalizer:
 
         return normalized_rows
 
+    def split_queue_items_for_ml(
+        self,
+        queue_items: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        ml_queue_items: list[dict[str, Any]] = []
+        skipped_queue_items: list[dict[str, Any]] = []
+
+        for item in queue_items:
+            if self._should_send_to_ml(item):
+                ml_queue_items.append(item)
+            else:
+                skipped_queue_items.append(item)
+
+        return ml_queue_items, skipped_queue_items
+
+    def build_local_irrelevant_rows(
+        self,
+        queue_items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "raw_post_id": int(item["raw_post_id"]),
+                "project_id": int(item["project_id"]),
+                "relevance_score": 0.0,
+                "relevance_label": "irrelevant",
+                "sentiment_score": 0.0,
+                "sentiment_label": "neutral",
+                "has_risk_words": self._contains_any(
+                    item["text"],
+                    item["risk_words"],
+                ),
+                "embedding": None,
+                "dedup_group_id": None,
+                "is_primary": True,
+                "processed_at": None,
+            }
+            for item in queue_items
+        ]
+
     @staticmethod
     def _validate_result_mapping(
         *,
@@ -244,9 +284,7 @@ class MLResultNormalizer:
         if "is_relevant" in payload:
             return "relevant" if bool(payload["is_relevant"]) else "irrelevant"
 
-        raise ExternalMLResponseError(
-            "External ML result is missing a valid relevance label."
-        )
+        return "relevant"
 
     @staticmethod
     def _normalize_sentiment_label(payload: dict[str, Any]) -> str:
@@ -291,3 +329,15 @@ class MLResultNormalizer:
         if not keywords:
             return True
         return cls._contains_any(text, keywords)
+
+    @classmethod
+    def _should_send_to_ml(cls, queue_item: dict[str, Any]) -> bool:
+        has_keyword_match = cls._matches_keywords(
+            queue_item["text"],
+            queue_item["keywords"],
+        )
+        has_excluded_match = cls._contains_any(
+            queue_item["text"],
+            queue_item["exclude_keywords"],
+        )
+        return has_keyword_match and not has_excluded_match

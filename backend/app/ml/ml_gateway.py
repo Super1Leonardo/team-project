@@ -41,7 +41,15 @@ class ExternalMLGateway:
 
     async def predict(self, items: list[dict[str, Any]]) -> Any:
         payload = {
-            "texts": jsonable_encoder([item.get("text", "") for item in items]),
+            "items": jsonable_encoder(
+                [
+                    {
+                        "text": item.get("text", ""),
+                        "company": item.get("company", ""),
+                    }
+                    for item in items
+                ]
+            ),
         }
 
         try:
@@ -67,7 +75,7 @@ class ExternalMLGateway:
             ) from exc
 
     async def get_health_status(self) -> dict[str, Any]:
-        payload = {"texts": []}
+        payload = {"items": []}
 
         try:
             async with httpx.AsyncClient(timeout=self.health_timeout) as client:

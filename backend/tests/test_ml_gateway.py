@@ -49,6 +49,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
                         {
                             "raw_post_id": 1,
                             "text": "brand update",
+                            "company": "Brand Radar",
                             "keywords": ["brand"],
                         }
                     ]
@@ -60,7 +61,12 @@ class ExternalMLGatewayTests(unittest.TestCase):
         self.assertEqual(client.timeout.read, 60)
         self.assertEqual(
             client.post_calls,
-            [("http://ml.example/predict", {"texts": ["brand update"]})],
+            [
+                (
+                    "http://ml.example/predict",
+                    {"items": [{"text": "brand update", "company": "Brand Radar"}]},
+                )
+            ],
         )
 
     def test_health_probe_uses_short_timeout_and_returns_healthy_on_422(self) -> None:
@@ -74,7 +80,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
         _RecordingAsyncClient.instances.clear()
         _RecordingAsyncClient.response = httpx.Response(
             422,
-            json={"detail": "texts required"},
+            json={"detail": "items required"},
         )
 
         with patch("backend.app.ml.ml_gateway.httpx.AsyncClient", _RecordingAsyncClient):
@@ -85,7 +91,7 @@ class ExternalMLGatewayTests(unittest.TestCase):
         self.assertEqual(client.timeout.read, 2)
         self.assertEqual(
             client.post_calls,
-            [("http://ml.example/predict", {"texts": []})],
+            [("http://ml.example/predict", {"items": []})],
         )
         self.assertEqual(
             result,

@@ -183,8 +183,19 @@ class BrandRadarService:
                 "remote_response": {"results": []},
             }
 
-        remote_response = await self.runtime.external_ml_gateway.predict(items)
-        remote_results = self.runtime.ml_normalizer.extract_remote_results(remote_response)
+        ml_items, skipped_items = await asyncio.to_thread(
+            self.runtime.ml_normalizer.split_queue_items_for_ml,
+            items,
+        )
+        skipped_rows = await asyncio.to_thread(
+            self.runtime.ml_normalizer.build_local_irrelevant_rows,
+            skipped_items,
+        )
+        remote_response: dict[str, Any] | list[dict[str, Any]] = {"results": []}
+        remote_results: list[dict[str, Any]] = []
+        if ml_items:
+            remote_response = await self.runtime.external_ml_gateway.predict(ml_items)
+            remote_results = self.runtime.ml_normalizer.extract_remote_results(remote_response)
 
         response_payload = {
             "queued_count": len(items),
@@ -202,11 +213,15 @@ class BrandRadarService:
                 "projects": {},
             }
 
-        mention_rows = await asyncio.to_thread(
-            self.runtime.ml_normalizer.normalize_remote_results,
-            queue_items=items,
-            remote_results=remote_results,
-        )
+        mention_rows = skipped_rows.copy()
+        if ml_items:
+            mention_rows.extend(
+                await asyncio.to_thread(
+                    self.runtime.ml_normalizer.normalize_remote_results,
+                    queue_items=ml_items,
+                    remote_results=remote_results,
+                )
+            )
         result = await self.runtime.ml_worker.persist_mention_rows(
             mention_rows,
         )
