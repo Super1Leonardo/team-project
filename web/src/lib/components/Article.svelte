@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page as pageState } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/shadcn/badge';
 	import { Button } from '$lib/components/ui/shadcn/button';
@@ -149,6 +150,7 @@
 				console.error('Failed to update resolved status:', response.error.message);
 			} else {
 				cluster.resolved = newResolvedState;
+				goto(pageState.url, { invalidateAll: true });
 			}
 		} catch (error) {
 			console.error('Error updating resolved status:', error);
@@ -222,13 +224,30 @@
 			{cluster.text}
 		</p>
 
-		<div class="flex w-full justify-start sm:justify-end">
+		<div class="flex w-full items-center justify-start gap-2">
+			{#if cluster.has_risk_words || cluster.resolved}
+				<Button
+					variant={cluster.resolved ? 'outline' : 'default'}
+					size="sm"
+					disabled={isResolving}
+					onclick={() => toggleResolved()}
+					class="mt-2"
+				>
+					{#if isResolving}
+						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+					{:else}
+						<CheckCircle2 class="mr-2 h-4 w-4" />
+					{/if}
+					{cluster.resolved ? 'Необработанное' : 'Обработано'}
+				</Button>
+			{/if}
+
 			<Dialog.Root bind:open={dialogOpen}>
 				<Dialog.Trigger>
 					<Button
 						variant="ghost"
 						size="sm"
-						class="mt-2 w-full justify-start gap-1 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground sm:justify-end"
+						class="mt-2 justify-start gap-1 text-muted-foreground hover:bg-transparent hover:text-foreground"
 					>
 						Читать далее <ExternalLink class="h-4 w-4" />
 					</Button>
@@ -256,24 +275,6 @@
 							>
 								Открыть оригинал <ExternalLink class="h-4 w-4" />
 							</a>
-						{/if}
-
-						{#if cluster.has_risk_words || cluster.resolved}
-							<div class="flex items-center gap-2 pt-2">
-								<Button
-									variant={cluster.resolved ? 'outline' : 'default'}
-									size="sm"
-									disabled={isResolving}
-									onclick={() => toggleResolved()}
-								>
-									{#if isResolving}
-										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-									{:else}
-										<CheckCircle2 class="mr-2 h-4 w-4" />
-									{/if}
-									{cluster.resolved ? 'Отметить как необработанное' : 'Отметить как обработанное'}
-								</Button>
-							</div>
 						{/if}
 					</div>
 				</Dialog.Content>
