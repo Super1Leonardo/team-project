@@ -18,6 +18,7 @@
 		HoverCardContent,
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
+	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
 	import { page as pageState } from '$app/state';
@@ -102,42 +103,36 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2 sm:-mt-1.5 sm:justify-end">
-			<HoverCard>
-				<HoverCardTrigger>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
 					<Badge class={sentimentColor} variant="outline">
 						{tSentiment(cluster.sentiment_label as SentimentLabel)}
 					</Badge>
-				</HoverCardTrigger>
-				<HoverCardContent class="w-64 text-sm">
-					<p>Тональность статьи: {cluster.sentiment_score.toFixed(2)}</p>
-				</HoverCardContent>
-			</HoverCard>
+				</Tooltip.Trigger>
+				<Tooltip.Content>Тональность статьи</Tooltip.Content>
+			</Tooltip.Root>
 
-			<HoverCard>
-				<HoverCardTrigger>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
 					<Badge variant="secondary" class="font-mono">
 						{relevancePercent}%
 					</Badge>
-				</HoverCardTrigger>
-				<HoverCardContent class="w-64 text-sm">
-					<p>Релевантность статьи: {cluster.relevance_score.toFixed(2)}</p>
-				</HoverCardContent>
-			</HoverCard>
+				</Tooltip.Trigger>
+				<Tooltip.Content>Релевантность статьи</Tooltip.Content>
+			</Tooltip.Root>
 
 			{#if cluster.has_risk_words}
-				<HoverCard>
-					<HoverCardTrigger>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
 						<Badge
 							variant="outline"
 							class="flex h-5 w-5 cursor-help items-center justify-center border-red-500 bg-red-100 p-0 text-lg font-bold text-red-600 shadow shadow-destructive/20"
 						>
 							!
 						</Badge>
-					</HoverCardTrigger>
-					<HoverCardContent class="w-64 text-sm">
-						<p class="font-semibold">Статья содержит risk-слова бренда</p>
-					</HoverCardContent>
-				</HoverCard>
+					</Tooltip.Trigger>
+					<Tooltip.Content>Статья содержит risk-слова бренда</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
 		</div>
 	</CardHeader>
