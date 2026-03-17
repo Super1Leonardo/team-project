@@ -127,7 +127,9 @@ class MLResultNormalizer:
                 queue_item["text"],
                 queue_item["risk_words"],
             )
-            embedding = self._normalize_embedding(result.get("embedding"))
+            embedding = self._normalize_embedding(
+                self._extract_embedding_payload(result)
+            )
             dedup_group_id, is_primary = self._assign_dedup(
                 project_id=int(queue_item["project_id"]),
                 relevance_label=relevance_label,
@@ -372,6 +374,18 @@ class MLResultNormalizer:
         raise ExternalMLResponseError(
             "External ML result must contain a valid embedding with 384 numeric values."
         )
+
+    @staticmethod
+    def _extract_embedding_payload(payload: dict[str, Any]) -> Any:
+        embedding = payload.get("embedding")
+        if embedding is not None:
+            return embedding
+
+        cluster = payload.get("cluster")
+        if isinstance(cluster, dict):
+            return cluster.get("embedding")
+
+        return None
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:

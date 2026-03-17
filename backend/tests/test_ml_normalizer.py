@@ -227,6 +227,40 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["dedup_group_id"], 77)
         self.assertFalse(normalized[0]["is_primary"])
 
+    def test_normalize_remote_results_uses_nested_cluster_embedding(self) -> None:
+        normalizer = MLResultNormalizer(
+            _ClusterMatchStore(),
+            cluster_threshold=0.22,
+        )
+        normalized = normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "sentiment": "positive",
+                    "sentiment_score": 0.8566,
+                    "confidence": {
+                        "positive": 0.8566,
+                        "neutral": 0.0997,
+                        "negative": 0.0436,
+                    },
+                    "cluster": {
+                        "cluster_id": "72458680-8854-4eae-b11d-9adfdfef2f04",
+                        "similarity": 0.6741781234741211,
+                        "is_new": True,
+                        "size": 1,
+                        "embedding": [0.01] * 384,
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["relevance_score"], 0.8566)
+        self.assertEqual(normalized[0]["dedup_group_id"], 77)
+        self.assertFalse(normalized[0]["is_primary"])
+        self.assertEqual(normalized[0]["embedding"], [0.01] * 384)
+
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(
             ExternalMLResponseError,
