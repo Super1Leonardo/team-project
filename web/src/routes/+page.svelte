@@ -7,30 +7,7 @@
 	import { goto } from '$app/navigation';
 	import { page as pageState } from '$app/state';
 	import type { PageData } from './$types';
-	import type { Cluster } from '$lib/components/ArticleList.svelte';
-
-	interface BackendMention {
-		id: number;
-		raw_post_id: number;
-		project_id: number;
-		source_id: number;
-		source_type: 'telegram' | 'vk' | 'dzen' | 'rss';
-		source_name?: string;
-		url: string | null;
-		title: string | null;
-		text: string;
-		author: string | null;
-		published_at: string;
-		relevance_score: number;
-		relevance_label: string;
-		sentiment_score: number;
-		sentiment_label: 'positive' | 'neutral' | 'negative';
-		has_risk_words: boolean;
-		risk_words?: string[];
-		dedup_group_id: number | null;
-		is_primary: boolean;
-		dedup?: { duplicates: any[] };
-	}
+	import type { MentionCluster } from '$lib/types/brandradar';
 
 	let { data }: { data: PageData } = $props();
 
@@ -46,21 +23,7 @@
 		goto(url, { invalidateAll: true });
 	}
 
-	let clusters: Cluster[] = $derived(
-		(data.mentions as BackendMention[] || []).map((m) => ({
-			id: String(m.id),
-			title: m.title || '',
-			source: m.source_name || m.source_type,
-			publishedAt: m.published_at,
-			sentiment: m.sentiment_label,
-			mlScore: Math.round(m.relevance_score * 100),
-			hasRiskWords: m.has_risk_words,
-			text: m.text,
-			url: m.url,
-			duplicates: m.dedup?.duplicates || []
-		}))
-	);
-
+	let clusters: MentionCluster[] = $derived((data.clusters as MentionCluster[]) || []);
 	const hasError = $derived(!!data.error);
 </script>
 
@@ -73,7 +36,9 @@
 
 	{#if hasError}
 		<div class="rounded-lg border border-destructive bg-destructive/10 p-6 text-center">
-			<p class="mb-4 text-destructive">{data.error?.message || 'Произошла ошибка при загрузке данных'}</p>
+			<p class="mb-4 text-destructive">
+				{data.error?.message || 'Произошла ошибка при загрузке данных'}
+			</p>
 			<Button variant="outline" onclick={() => window.location.reload()}>
 				Повторить
 			</Button>
