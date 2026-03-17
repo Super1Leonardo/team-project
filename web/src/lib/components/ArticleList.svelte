@@ -1,13 +1,8 @@
-<script lang="ts" module>
-	import type { MentionCluster } from '$lib/types/brandradar';
-
-	export type Cluster = MentionCluster;
-</script>
-
 <script lang="ts">
 	import Article from '$lib/components/Article.svelte';
+	import type { MentionCluster } from '$lib/types/brandradar';
 
-	let { clusters = [] }: { clusters: Cluster[] } = $props();
+	let { clusters = [] }: { clusters: MentionCluster[] } = $props();
 </script>
 
 <div class="flex flex-col gap-4">

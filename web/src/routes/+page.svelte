@@ -7,7 +7,7 @@
 	import { goto } from '$app/navigation';
 	import { page as pageState } from '$app/state';
 	import type { PageData } from './$types';
-	import type { Cluster } from '$lib/components/ArticleList.svelte';
+	import type { MentionCluster } from '$lib/types/brandradar';
 
 	let { data }: { data: PageData } = $props();
 
@@ -23,7 +23,7 @@
 		goto(url, { invalidateAll: true });
 	}
 
-	let clusters: Cluster[] = $derived((data.clusters as Cluster[]) || []);
+	let clusters: MentionCluster[] = $derived((data.clusters as MentionCluster[]) || []);
 	const hasError = $derived(!!data.error);
 </script>
 
