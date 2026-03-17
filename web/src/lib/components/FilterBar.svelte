@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { navigating } from '$app/stores';
 	import * as Select from '$lib/components/ui/shadcn/select';
 	import * as Checkbox from '$lib/components/ui/shadcn/checkbox';
 	import { confidence, period, sentiment, riskWordsOnly } from '$lib/stores/filters';
+	import { Loader2 } from '@lucide/svelte';
 
 	type HealthData = {
 		clickhouse?: string;
@@ -14,6 +16,7 @@
 	const isClickHouseDown = $derived(health?.clickhouse === 'unhealthy');
 	const showSentiment = $derived(!hiddenFilters.includes('sentiment'));
 	const showRiskWords = $derived(!hiddenFilters.includes('riskWordsOnly'));
+	const isLoading = $derived($navigating !== null);
 
 	const DEFAULTS = {
 		confidence: '0.7',
@@ -45,7 +48,7 @@
 		} else {
 			url.searchParams.delete(key);
 		}
-		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
+		goto(url, { keepFocus: true, noScroll: true, invalidateAll: true });
 	}
 
 	function updateRiskWordsFilter(checked: boolean) {
@@ -56,7 +59,7 @@
 		} else {
 			url.searchParams.delete('risk_words_only');
 		}
-		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
+		goto(url, { keepFocus: true, noScroll: true, invalidateAll: true });
 	}
 
 	function getSentimentLabel(value: string | null): string {
@@ -157,6 +160,12 @@
 				<button onclick={() => updateRiskWordsFilter(!$riskWordsOnly)} class="text-sm cursor-pointer">
 					Только рисковые
 				</button>
+			</div>
+		{/if}
+
+		{#if isLoading}
+			<div class="flex items-center justify-center pb-2">
+				<Loader2 class="h-4 w-4 animate-spin text-muted-foreground" />
 			</div>
 		{/if}
 	</div>

@@ -2,6 +2,7 @@
 	import { page as pageState } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
+	import { toast } from 'svelte-sonner';
 	import { Badge } from '$lib/components/ui/shadcn/badge';
 	import { Button } from '$lib/components/ui/shadcn/button';
 	import {
@@ -147,12 +148,15 @@
 			);
 
 			if (response.error) {
+				toast.error('Ошибка при обновлении статуса');
 				console.error('Failed to update resolved status:', response.error.message);
 			} else {
 				cluster.resolved = newResolvedState;
+				toast.success(newResolvedState ? 'Статья отмечена как обработанная' : 'Статья отмечена как необработанная');
 				goto(pageState.url, { invalidateAll: true });
 			}
 		} catch (error) {
+			toast.error('Ошибка при обновлении статуса');
 			console.error('Error updating resolved status:', error);
 		} finally {
 			isResolving = false;
@@ -172,7 +176,7 @@
 			{/if}
 		</div>
 
-		<div class="flex flex-wrap items-center gap-2 sm:-mt-1.5 sm:justify-end">
+		<div class="flex flex-wrap items-center gap-2 mt-2 sm:-mt-1.5 sm:justify-end">
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					<Badge class={sentimentColor} variant="outline">
