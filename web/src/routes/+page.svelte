@@ -39,9 +39,7 @@
 			<p class="mb-4 text-destructive">
 				{data.error?.message || 'Произошла ошибка при загрузке данных'}
 			</p>
-			<Button variant="outline" onclick={() => window.location.reload()}>
-				Повторить
-			</Button>
+			<Button variant="outline" onclick={() => window.location.reload()}>Повторить</Button>
 		</div>
 	{:else}
 		<ArticleList {clusters} />
@@ -57,29 +55,17 @@
 			>
 				{#snippet children({ pages, currentPage: cp })}
 					<Pagination.Content>
-						<Pagination.PrevButton
-							class="size-9"
-							onclick={() => goToPage(cp - 1)}
-							disabled={cp <= 1}
-						/>
+						<Pagination.PrevButton onclick={() => goToPage(cp - 1)} disabled={cp <= 1} />
 						{#each pages as pageItem (pageItem.key)}
 							{#if pageItem.type === 'ellipsis'}
 								<Pagination.Ellipsis class="size-9" />
 							{:else}
-								<Pagination.Link
-									class="size-9"
-									isActive={cp === pageItem.value}
-									page={pageItem}
-								>
+								<Pagination.Link class="size-9" isActive={cp === pageItem.value} page={pageItem}>
 									{pageItem.value}
 								</Pagination.Link>
 							{/if}
 						{/each}
-						<Pagination.NextButton
-							class="size-9"
-							onclick={() => goToPage(cp + 1)}
-							disabled={cp >= totalPages}
-						/>
+						<Pagination.NextButton onclick={() => goToPage(cp + 1)} disabled={cp >= totalPages} />
 					</Pagination.Content>
 				{/snippet}
 			</Pagination.Root>

@@ -18,7 +18,6 @@
 		HoverCardContent,
 		HoverCardTrigger
 	} from '$lib/components/ui/shadcn/hover-card';
-	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
 	import { page as pageState } from '$app/state';
@@ -43,7 +42,6 @@
 	);
 
 	let relevancePercent = $derived((cluster.relevance_score * 100).toFixed(0));
-	let sentimentScore = $derived(cluster.sentiment_score.toFixed(2));
 
 	// Реактивно следим за открытием аккордеона для подгрузки данных
 	$effect(() => {
@@ -104,24 +102,27 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2 sm:-mt-1.5 sm:justify-end">
-			<Tooltip.Root>
-				<Tooltip.Trigger>
+			<HoverCard>
+				<HoverCardTrigger>
 					<Badge class={sentimentColor} variant="outline">
 						{tSentiment(cluster.sentiment_label as SentimentLabel)}
-						<span class="ml-1 opacity-60">({sentimentScore})</span>
 					</Badge>
-				</Tooltip.Trigger>
-				<Tooltip.Content>Уверенность ML-модели (Sentiment)</Tooltip.Content>
-			</Tooltip.Root>
+				</HoverCardTrigger>
+				<HoverCardContent class="w-64 text-sm">
+					<p>Тональность статьи: {cluster.sentiment_score.toFixed(2)}</p>
+				</HoverCardContent>
+			</HoverCard>
 
-			<Tooltip.Root>
-				<Tooltip.Trigger>
+			<HoverCard>
+				<HoverCardTrigger>
 					<Badge variant="secondary" class="font-mono">
-						Rel: {relevancePercent}%
+						{relevancePercent}%
 					</Badge>
-				</Tooltip.Trigger>
-				<Tooltip.Content>Уверенность ML-модели (Relevance Score)</Tooltip.Content>
-			</Tooltip.Root>
+				</HoverCardTrigger>
+				<HoverCardContent class="w-64 text-sm">
+					<p>Релевантность статьи: {cluster.relevance_score.toFixed(2)}</p>
+				</HoverCardContent>
+			</HoverCard>
 
 			{#if cluster.has_risk_words}
 				<HoverCard>
@@ -227,7 +228,7 @@
 								<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
 								<div class="mt-1 flex items-center gap-2">
 									<span class="font-mono text-xs text-muted-foreground">
-										Rel: {(dup.relevance_score * 100).toFixed(0)}%
+										{(dup.relevance_score * 100).toFixed(0)}%
 									</span>
 								</div>
 							</div>
