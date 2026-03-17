@@ -23,7 +23,7 @@
 
 	type DuplicateMention = Pick<
 		Mention,
-		'id' | 'source_type' | 'title' | 'text' | 'published_at' | 'relevance_score'
+		'id' | 'source_type' | 'title' | 'text' | 'published_at' | 'relevance_score' | 'url'
 	>;
 
 	let { cluster }: { cluster: MentionCluster } = $props();
@@ -252,30 +252,42 @@
 							<span class="ml-2 text-sm">Загрузка дублей...</span>
 						</div>
 					{:else if duplicatesError}
-						<div class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+						<div
+							class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+						>
 							{duplicatesError}
 						</div>
 					{:else if duplicates.length === 0}
-						<div class="p-3 text-sm text-muted-foreground">
-							Похожие публикации не найдены.
-						</div>
+						<div class="p-3 text-sm text-muted-foreground">Похожие публикации не найдены.</div>
 					{:else}
-						{#each duplicates as dup (dup.id)}
-							<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
-								<div class="flex items-center justify-between gap-3">
-									<span class="text-sm font-medium">{dup.source_type}</span>
-									<span class="text-xs text-muted-foreground">
-										{formatTime(dup.published_at)}
-									</span>
-								</div>
-								<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
-								<div class="mt-1 flex items-center gap-2">
-									<span class="font-mono text-xs text-muted-foreground">
-										{(dup.relevance_score * 100).toFixed(0)}%
-									</span>
-								</div>
-							</div>
-						{/each}
+						<ul class="max-h-10">
+							{#each duplicates as dup (dup.id)}
+								<li class="flex flex-col gap-1 border-l-2 border-muted pl-4">
+									<div class="flex items-center justify-between gap-3">
+										<span class="text-sm font-medium">{dup.source_type}</span>
+										<span class="text-xs text-muted-foreground">
+											{formatTime(dup.published_at)}
+										</span>
+									</div>
+									<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
+									<div class="mt-1 flex items-center gap-2">
+										<span class="font-mono text-xs text-muted-foreground">
+											{(dup.relevance_score * 100).toFixed(0)}%
+										</span>
+										{#if dup.url}
+											<a
+												href={dup.url}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+											>
+												Оригинал <ExternalLink class="h-3 w-3" />
+											</a>
+										{/if}
+									</div>
+								</li>
+							{/each}
+						</ul>
 					{/if}
 				</CollapsibleContent>
 			</Collapsible>
