@@ -17,7 +17,6 @@ export const load: PageServerLoad = async ({ url }) => {
 	const queryParams = new URLSearchParams();
 	queryParams.set('page', String(page));
 	queryParams.set('page_size', String(perPage));
-	queryParams.set('include_total', 'true');
 
 	if (confidence) queryParams.set('confidence', confidence);
 	if (period) queryParams.set('period', period);
