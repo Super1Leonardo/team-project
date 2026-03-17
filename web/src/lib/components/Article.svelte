@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { PUBLIC_BRANDRADAR_API_BASE_URL } from '$env/static/public';
+	import { page as pageState } from '$app/state';
+	import { api } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/shadcn/badge';
+	import { Button } from '$lib/components/ui/shadcn/button';
 	import {
 		Card,
 		CardContent,
@@ -6,33 +11,47 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/shadcn/card';
-	import { Badge } from '$lib/components/ui/shadcn/badge';
 	import {
 		Collapsible,
 		CollapsibleContent,
 		CollapsibleTrigger
 	} from '$lib/components/ui/shadcn/collapsible';
-	import { Button } from '$lib/components/ui/shadcn/button';
-	import {
-		HoverCard,
-		HoverCardContent,
-		HoverCardTrigger
-	} from '$lib/components/ui/shadcn/hover-card';
-	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
+	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
-	import { page as pageState } from '$app/state';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
-	// Принимаем MentionClusterResponse из API
+	type DuplicateMention = {
+		id: number;
+		source_type: string;
+		title?: string | null;
+		text: string;
+		published_at: string;
+		relevance_score: number;
+	};
+
 	let { cluster }: { cluster: any } = $props();
+
+	const API_BASE_URL = PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
+	const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+		hour: '2-digit',
+		minute: '2-digit',
+		timeZone: 'Europe/Moscow'
+	});
+	const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		timeZone: 'Europe/Moscow'
+	});
 
 	let isOpen = $state(false);
 	let dialogOpen = $state(false);
-
-	// Стейты для ленивой загрузки дубликатов
-	let duplicates = $state<any[]>([]);
+	let duplicates = $state<DuplicateMention[]>([]);
 	let isLoadingDuplicates = $state(false);
+	let duplicatesLoadAttempted = $state(false);
 
 	let sentimentColor = $derived(
 		cluster.sentiment_label === 'negative'
@@ -44,19 +63,25 @@
 
 	let relevancePercent = $derived((cluster.relevance_score * 100).toFixed(0));
 
-	// Реактивно следим за открытием аккордеона для подгрузки данных
 	$effect(() => {
-		if (isOpen && duplicates.length === 0 && !isLoadingDuplicates) {
+		if (isOpen && !duplicatesLoadAttempted && !isLoadingDuplicates) {
 			loadDuplicates();
 		}
 	});
 
+	function formatTime(value: string): string {
+		return timeFormatter.format(new Date(value));
+	}
+
+	function formatDateTime(value: string): string {
+		return dateTimeFormatter.format(new Date(value));
+	}
+
 	async function loadDuplicates() {
 		isLoadingDuplicates = true;
+		duplicatesLoadAttempted = true;
+
 		try {
-			// Вызываем общий эндпоинт ленты, выключая primary_only,
-			// чтобы достать все посты этой дедуп-группы
-			// TODO: В openapi нужно добавить параметр dedup_group_id в query для GET /mentions
 			const searchParams = new URLSearchParams();
 			searchParams.set('primary_only', 'false');
 			searchParams.set('relevant_only', 'true');
@@ -72,13 +97,15 @@
 			if (period) searchParams.set('period', period);
 			if (sentiment) searchParams.set('sentiment', sentiment);
 
-			const url = `/api/projects/${cluster.project_id}/mentions?${searchParams.toString()}`;
-			const res = await fetch(url);
-			if (!res.ok) throw new Error('Failed to fetch duplicates');
+			const url = `${API_BASE_URL}/api/projects/${cluster.project_id}/mentions?${searchParams.toString()}`;
+			const response = await api.get<DuplicateMention[]>(url);
+			if (response.error) {
+				throw new Error(response.error.message || 'Failed to fetch duplicates');
+			}
 
-			const json = await res.json();
-			// Исключаем основной репрезентативный пост из списка дублей
-			duplicates = (json.data || []).filter((m: any) => m.id !== cluster.representative_mention_id);
+			duplicates = (response.data || []).filter(
+				(item) => item.id !== cluster.representative_mention_id
+			);
 		} catch (error) {
 			console.error('Error fetching duplicates:', error);
 		} finally {
@@ -91,10 +118,7 @@
 	<CardHeader class="flex flex-col gap-2 pb-2 sm:flex-row sm:items-start sm:justify-between">
 		<div class="flex flex-col">
 			<span class="text-xs text-muted-foreground sm:text-sm">
-				{cluster.source_type} • {new Date(cluster.published_at).toLocaleTimeString([], {
-					hour: '2-digit',
-					minute: '2-digit'
-				})}
+				{cluster.source_type} • {formatTime(cluster.published_at)}
 			</span>
 
 			{#if cluster.title}
@@ -160,7 +184,7 @@
 					<Dialog.Header>
 						<Dialog.Title class="text-2xl">{cluster.title || 'Публикация'}</Dialog.Title>
 						<Dialog.Description>
-							{cluster.source_type} • {new Date(cluster.published_at).toLocaleString('ru-RU')}
+							{cluster.source_type} • {formatDateTime(cluster.published_at)}
 						</Dialog.Description>
 					</Dialog.Header>
 
@@ -193,7 +217,7 @@
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
-							<span>Ещё {cluster.mentions_count - 1} источника ▸</span>
+							<span>Еще {cluster.mentions_count - 1} источника</span>
 							<ChevronDown
 								size={16}
 								class="transition-transform duration-200 {isOpen ? 'rotate-180' : ''}"
@@ -206,7 +230,7 @@
 					{#if isLoadingDuplicates}
 						<div class="flex items-center justify-center p-4 text-muted-foreground">
 							<Loader2 class="h-5 w-5 animate-spin" />
-							<span class="ml-2 text-sm">Загрузка дубликатов...</span>
+							<span class="ml-2 text-sm">Загрузка дублей...</span>
 						</div>
 					{:else}
 						{#each duplicates as dup (dup.id)}
@@ -214,10 +238,7 @@
 								<div class="flex items-center justify-between">
 									<span class="text-sm font-medium">{dup.source_type}</span>
 									<span class="text-xs text-muted-foreground">
-										{new Date(dup.published_at).toLocaleTimeString([], {
-											hour: '2-digit',
-											minute: '2-digit'
-										})}
+										{formatTime(dup.published_at)}
 									</span>
 								</div>
 								<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
