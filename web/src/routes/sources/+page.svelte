@@ -240,17 +240,17 @@
 
 								<div class="flex min-w-0 flex-1 flex-col">
 									<div class="flex items-start justify-between gap-2">
-										<div class="text-foreground flex flex-col gap-0.5 truncate">
+										<div class="flex flex-col gap-0.5 truncate text-foreground">
 											<div class="font-medium">{tSourceType(source.source_type as SourceType)}</div>
 											<div
-												class="text-sm text-muted-foreground"
+												class="truncate text-sm text-muted-foreground"
 												title={getSourceDisplayConfig(source)}
 											>
 												{getSourceDisplayConfig(source)}
 											</div>
 										</div>
 
-										<div class="flex flex-col gap-2 items-end">
+										<div class="flex flex-col items-end gap-2">
 											<form
 												method="POST"
 												action="?/toggleSource"
@@ -295,9 +295,12 @@
 												/>
 											</form>
 
-											<Dialog.Root open={deletingSourceId === source.id} onOpenChange={(open) => {
-												if (!open) deletingSourceId = null;
-											}}>
+											<Dialog.Root
+												open={deletingSourceId === source.id}
+												onOpenChange={(open) => {
+													if (!open) deletingSourceId = null;
+												}}
+											>
 												<Button
 													type="button"
 													variant="ghost"
@@ -313,7 +316,9 @@
 													<Dialog.Header>
 														<Dialog.Title>Удалить источник</Dialog.Title>
 														<Dialog.Description>
-															Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(source)}"? Это действие нельзя отменить.
+															Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(
+																source
+															)}"? Это действие нельзя отменить.
 														</Dialog.Description>
 													</Dialog.Header>
 													<form
@@ -334,27 +339,32 @@
 														<input type="hidden" name="source_id" value={source.id} />
 														<input type="hidden" name="project_id" value={project?.id} />
 														<Dialog.Footer>
-															<Button type="button" variant="outline" onclick={() => deletingSourceId = null}>
+															<Button
+																type="button"
+																variant="outline"
+																onclick={() => (deletingSourceId = null)}
+															>
 																Отмена
 															</Button>
-															<Button type="submit" variant="destructive">
-																Удалить
-															</Button>
+															<Button type="submit" variant="destructive">Удалить</Button>
 														</Dialog.Footer>
 													</form>
 												</Dialog.Content>
 											</Dialog.Root>
 										</div>
 
-										<span class="text-sm sm:hidden {getStatusColor(status)} truncate">
+										<span class="text-sm whitespace-nowrap sm:hidden {getStatusColor(status)} ">
 											• {getStatusText(status)}
 										</span>
 
-										<Dialog.Root open={deletingSourceId === source.id} onOpenChange={(open) => {
-											if (!open) deletingSourceId = null;
-										}}>
+										<Dialog.Root
+											open={deletingSourceId === source.id}
+											onOpenChange={(open) => {
+												if (!open) deletingSourceId = null;
+											}}
+										>
 											<button
-												class="sm:hidden text-muted-foreground hover:text-destructive"
+												class="text-muted-foreground hover:text-destructive sm:hidden"
 												onclick={() => {
 													deletingSourceId = source.id;
 												}}
@@ -365,7 +375,9 @@
 												<Dialog.Header>
 													<Dialog.Title>Удалить источник</Dialog.Title>
 													<Dialog.Description>
-														Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(source)}"? Это действие нельзя отменить.
+														Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(
+															source
+														)}"? Это действие нельзя отменить.
 													</Dialog.Description>
 												</Dialog.Header>
 												<form
@@ -386,12 +398,14 @@
 													<input type="hidden" name="source_id" value={source.id} />
 													<input type="hidden" name="project_id" value={project?.id} />
 													<Dialog.Footer>
-														<Button type="button" variant="outline" onclick={() => deletingSourceId = null}>
+														<Button
+															type="button"
+															variant="outline"
+															onclick={() => (deletingSourceId = null)}
+														>
 															Отмена
 														</Button>
-														<Button type="submit" variant="destructive">
-															Удалить
-														</Button>
+														<Button type="submit" variant="destructive">Удалить</Button>
 													</Dialog.Footer>
 												</form>
 											</Dialog.Content>
@@ -424,7 +438,7 @@
 							</div>
 
 							<div class="mt-3 flex flex-col gap-2 sm:hidden">
-								<div class="text-sm text-muted-foreground">
+								<div class="truncate text-sm text-muted-foreground">
 									{#if source.last_collected_at}
 										Последний сбор: {new Date(source.last_collected_at).toLocaleString('ru-RU')}
 									{:else}
