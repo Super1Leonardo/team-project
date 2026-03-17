@@ -380,6 +380,13 @@ class MixedPersistMentionsCursor:
 
 
 class PersistMentionsRepositoryTests(unittest.TestCase):
+    def test_vector_literal_accepts_pgvector_text_representation(self) -> None:
+        store = BrandRadarPostgresStore(Settings())
+
+        result = store._vector_literal("[1, 2.5, -3]")
+
+        self.assertEqual(result, "[1.0000000000,2.5000000000,-3.0000000000]")
+
     def test_persist_mentions_casts_null_embedding_to_vector_type(self) -> None:
         fake_cursor = PersistMentionsCursor()
         fake_connection = PersistMentionsConnection(fake_cursor)

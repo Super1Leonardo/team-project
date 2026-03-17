@@ -2037,8 +2037,19 @@ class BrandRadarPostgresStore:
         )
 
     @staticmethod
-    def _vector_literal(embedding: list[float]) -> str:
-        return "[" + ",".join(f"{value:.10f}" for value in embedding) + "]"
+    def _vector_literal(embedding: list[float] | tuple[float, ...] | str) -> str:
+        values: list[float]
+        if isinstance(embedding, str):
+            normalized = embedding.strip()
+            if normalized.startswith("[") and normalized.endswith("]"):
+                inner = normalized[1:-1].strip()
+                parts = [] if not inner else [part.strip() for part in inner.split(",")]
+                values = [float(part) for part in parts]
+            else:
+                raise ValueError("Embedding string must use pgvector literal format.")
+        else:
+            values = [float(value) for value in embedding]
+        return "[" + ",".join(f"{value:.10f}" for value in values) + "]"
 
     def _refresh_dedup_group(self, cur: psycopg.Cursor, group_id: int) -> None:
         cur.execute(
