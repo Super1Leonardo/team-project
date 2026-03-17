@@ -8,6 +8,7 @@
 	import { page as pageState } from '$app/state';
 	import type { PageData } from './$types';
 	import type { MentionCluster } from '$lib/types/brandradar';
+	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -55,7 +56,9 @@
 			>
 				{#snippet children({ pages, currentPage: cp })}
 					<Pagination.Content>
-						<Pagination.PrevButton onclick={() => goToPage(cp - 1)} disabled={cp <= 1} />
+						<Pagination.PrevButton onclick={() => goToPage(cp - 1)} disabled={cp <= 1}>
+							<ChevronLeft class="size-6" />
+						</Pagination.PrevButton>
 						{#each pages as pageItem (pageItem.key)}
 							{#if pageItem.type === 'ellipsis'}
 								<Pagination.Ellipsis class="size-9" />
@@ -65,7 +68,9 @@
 								</Pagination.Link>
 							{/if}
 						{/each}
-						<Pagination.NextButton onclick={() => goToPage(cp + 1)} disabled={cp >= totalPages} />
+						<Pagination.NextButton onclick={() => goToPage(cp + 1)} disabled={cp >= totalPages}>
+							<ChevronRight class="size-6" />
+						</Pagination.NextButton>
 					</Pagination.Content>
 				{/snippet}
 			</Pagination.Root>
