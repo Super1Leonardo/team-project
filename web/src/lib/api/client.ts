@@ -108,9 +108,13 @@ export async function fetchApi<T>(
 			let data: T | undefined;
 			let meta: ApiResponseMeta | undefined;
 			
-			if (parsed && typeof parsed === 'object' && 'data' in parsed) {
-				data = (parsed as { data: T }).data;
-				meta = (parsed as { meta?: ApiResponseMeta }).meta;
+			if (parsed === null || parsed === undefined) {
+				data = undefined;
+			} else if (Array.isArray(parsed)) {
+				data = parsed as T;
+			} else if (typeof parsed === 'object' && 'data' in parsed) {
+				data = (parsed as any).data;
+				meta = (parsed as any).meta;
 			} else {
 				data = parsed as T;
 			}
