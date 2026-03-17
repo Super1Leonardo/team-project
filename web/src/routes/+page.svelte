@@ -32,7 +32,7 @@
 	<div class="mb-6 flex w-full flex-col items-center">
 		<Heading>Лента</Heading>
 
-		<FilterBar />
+		<FilterBar health={data.health} />
 	</div>
 
 	{#if hasError}

@@ -21,7 +21,7 @@
 	<div class="flex w-full flex-col items-center">
 		<Heading>Аналитика репутации</Heading>
 
-		<FilterBar />
+		<FilterBar health={data.health} />
 	</div>
 
 	{#if hasError}
@@ -37,8 +37,8 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-			<Card.Root>
-				<Card.Header class="pb-4">
+			<Card.Root class="flex flex-col justify-between">
+				<Card.Header>
 					<Card.Title class="text-sm font-medium text-muted-foreground"
 						>Обработано упоминаний</Card.Title
 					>
@@ -49,8 +49,8 @@
 				</Card.Content>
 			</Card.Root>
 
-			<Card.Root>
-				<Card.Header class="pb-4">
+			<Card.Root class="flex flex-col justify-between">
+				<Card.Header>
 					<Card.Title class="text-sm font-medium text-muted-foreground">Spike-алерты</Card.Title>
 				</Card.Header>
 				<Card.Content>
@@ -59,8 +59,8 @@
 				</Card.Content>
 			</Card.Root>
 
-			<Card.Root>
-				<Card.Header class="pb-4">
+			<Card.Root class="flex flex-col justify-between">
+				<Card.Header>
 					<Card.Title class="text-sm font-medium text-muted-foreground"
 						>Средняя уверенность (ML Score)</Card.Title
 					>
