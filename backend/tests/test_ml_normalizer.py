@@ -286,6 +286,62 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual([item["raw_post_id"] for item in ml_items], [1, 4])
         self.assertEqual([item["raw_post_id"] for item in skipped_items], [2, 3])
 
+    def test_split_queue_items_for_ml_matches_keywords_in_title_and_text(self) -> None:
+        now = datetime.now(UTC)
+        queue_item = {
+            "raw_post_id": 10,
+            "source_id": 10,
+            "project_id": 100,
+            "source_type": "rss",
+            "company": "Brand Radar",
+            "external_id": "post-10",
+            "url": "https://example.com/10",
+            "title": "Brand outage bulletin",
+            "text": "General company update",
+            "author": "Eve",
+            "published_at": now,
+            "collected_at": now,
+            "raw_meta": {},
+            "keywords": ["brand"],
+            "exclude_keywords": [],
+            "risk_words": ["outage"],
+        }
+
+        ml_items, skipped_items = self.normalizer.split_queue_items_for_ml([queue_item])
+
+        self.assertEqual([item["raw_post_id"] for item in ml_items], [10])
+        self.assertEqual(skipped_items, [])
+
+    def test_normalize_remote_results_uses_title_for_keyword_and_risk_matching(self) -> None:
+        now = datetime.now(UTC)
+        queue_item = {
+            "raw_post_id": 10,
+            "source_id": 10,
+            "project_id": 100,
+            "source_type": "rss",
+            "company": "Brand Radar",
+            "external_id": "post-10",
+            "url": "https://example.com/10",
+            "title": "Brand outage bulletin",
+            "text": "General company update",
+            "author": "Eve",
+            "published_at": now,
+            "collected_at": now,
+            "raw_meta": {},
+            "keywords": ["brand"],
+            "exclude_keywords": [],
+            "risk_words": ["outage"],
+        }
+
+        normalized = self.normalizer.normalize_remote_results(
+            queue_items=[queue_item],
+            remote_results=[self._remote_result()],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["relevance_score"], 0.91)
+        self.assertTrue(normalized[0]["has_risk_words"])
+
     def test_build_local_irrelevant_rows_marks_filtered_items_without_ml(self) -> None:
         rows = self.normalizer.build_local_irrelevant_rows(self.queue_items[1:3])
 

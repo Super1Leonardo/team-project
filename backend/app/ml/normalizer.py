@@ -100,13 +100,14 @@ class MLResultNormalizer:
                 remote_item=result,
                 index=index,
             )
+            searchable_text = self._build_searchable_text(queue_item)
             sentiment_label = self._normalize_sentiment_label(result)
             has_keyword_match = self._matches_keywords(
-                queue_item["text"],
+                searchable_text,
                 queue_item["keywords"],
             )
             has_excluded_match = self._contains_any(
-                queue_item["text"],
+                searchable_text,
                 queue_item["exclude_keywords"],
             )
             relevance_label = self._normalize_relevance_label(result)
@@ -124,7 +125,7 @@ class MLResultNormalizer:
                 default=0.0,
             )
             has_risk_words = self._contains_any(
-                queue_item["text"],
+                searchable_text,
                 queue_item["risk_words"],
             )
             embedding = self._normalize_embedding(
@@ -182,7 +183,7 @@ class MLResultNormalizer:
                 "sentiment_score": 0.0,
                 "sentiment_label": "neutral",
                 "has_risk_words": self._contains_any(
-                    item["text"],
+                    self._build_searchable_text(item),
                     item["risk_words"],
                 ),
                 "embedding": None,
@@ -415,15 +416,24 @@ class MLResultNormalizer:
 
     @classmethod
     def _should_send_to_ml(cls, queue_item: dict[str, Any]) -> bool:
+        searchable_text = cls._build_searchable_text(queue_item)
         has_keyword_match = cls._matches_keywords(
-            queue_item["text"],
+            searchable_text,
             queue_item["keywords"],
         )
         has_excluded_match = cls._contains_any(
-            queue_item["text"],
+            searchable_text,
             queue_item["exclude_keywords"],
         )
         return has_keyword_match and not has_excluded_match
+
+    @staticmethod
+    def _build_searchable_text(queue_item: dict[str, Any]) -> str:
+        title = str(queue_item.get("title") or "").strip()
+        text = str(queue_item.get("text") or "").strip()
+        if title and text:
+            return f"{title}\n{text}"
+        return title or text
 
     @staticmethod
     def _normalize_text(value: str) -> str:
