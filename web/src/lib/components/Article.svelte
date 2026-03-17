@@ -20,28 +20,63 @@
 	} from '$lib/components/ui/shadcn/hover-card';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
-	import { ChevronDown, ExternalLink } from '@lucide/svelte';
+	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
+	// Принимаем MentionClusterResponse из API
 	let { cluster }: { cluster: any } = $props();
 
 	let isOpen = $state(false);
 	let dialogOpen = $state(false);
 
+	// Стейты для ленивой загрузки дубликатов
+	let duplicates = $state<any[]>([]);
+	let isLoadingDuplicates = $state(false);
+
 	let sentimentColor = $derived(
-		cluster.sentiment === 'negative'
+		cluster.sentiment_label === 'negative'
 			? 'bg-red-100 border-red-500 text-red-800'
-			: cluster.sentiment === 'positive'
+			: cluster.sentiment_label === 'positive'
 				? 'bg-green-100 border-green-500 text-green-800'
 				: 'bg-gray-100 border-gray-500 text-gray-800'
 	);
+
+	let relevancePercent = $derived((cluster.relevance_score * 100).toFixed(0));
+	let sentimentScore = $derived(cluster.sentiment_score.toFixed(2));
+
+	// Реактивно следим за открытием аккордеона для подгрузки данных
+	$effect(() => {
+		if (isOpen && duplicates.length === 0 && !isLoadingDuplicates) {
+			loadDuplicates();
+		}
+	});
+
+	async function loadDuplicates() {
+		isLoadingDuplicates = true;
+		try {
+			// Вызываем общий эндпоинт ленты, выключая primary_only,
+			// чтобы достать все посты этой дедуп-группы
+			// TODO: В openapi нужно добавить параметр dedup_group_id в query для GET /mentions
+			const url = `/api/projects/${cluster.project_id}/mentions?primary_only=false&limit=100&dedup_group_id=${cluster.dedup_group_id}`;
+			const res = await fetch(url);
+			if (!res.ok) throw new Error('Failed to fetch duplicates');
+
+			const json = await res.json();
+			// Исключаем основной репрезентативный пост из списка дублей
+			duplicates = (json.data || []).filter((m: any) => m.id !== cluster.representative_mention_id);
+		} catch (error) {
+			console.error('Error fetching duplicates:', error);
+		} finally {
+			isLoadingDuplicates = false;
+		}
+	}
 </script>
 
-<Card class={['mb-4', cluster.hasRiskWords && 'shadow-xl shadow-destructive/25']}>
+<Card class={['mb-4', cluster.has_risk_words && 'shadow-xl shadow-destructive/25']}>
 	<CardHeader class="flex flex-col gap-2 pb-2 sm:flex-row sm:items-start sm:justify-between">
 		<div class="flex flex-col">
 			<span class="text-xs text-muted-foreground sm:text-sm">
-				{cluster.source} • {new Date(cluster.publishedAt).toLocaleTimeString([], {
+				{cluster.source_type} • {new Date(cluster.published_at).toLocaleTimeString([], {
 					hour: '2-digit',
 					minute: '2-digit'
 				})}
@@ -53,20 +88,26 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2 sm:-mt-1.5 sm:justify-end">
-			<Badge class={sentimentColor} variant="outline">
-				{tSentiment(cluster.sentiment as SentimentLabel)}
-			</Badge>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Badge class={sentimentColor} variant="outline">
+						{tSentiment(cluster.sentiment_label as SentimentLabel)}
+						<span class="ml-1 opacity-60">({sentimentScore})</span>
+					</Badge>
+				</Tooltip.Trigger>
+				<Tooltip.Content>Уверенность ML-модели (Sentiment)</Tooltip.Content>
+			</Tooltip.Root>
 
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					<Badge variant="secondary" class="font-mono">
-						{cluster.mlScore > 0 ? cluster.mlScore : '—'}%
+						Rel: {relevancePercent}%
 					</Badge>
 				</Tooltip.Trigger>
-				<Tooltip.Content>Уверенность ML-модели (Relevance)</Tooltip.Content>
+				<Tooltip.Content>Уверенность ML-модели (Relevance Score)</Tooltip.Content>
 			</Tooltip.Root>
 
-			{#if cluster.hasRiskWords}
+			{#if cluster.has_risk_words}
 				<HoverCard>
 					<HoverCardTrigger>
 						<Badge
@@ -89,7 +130,7 @@
 			{cluster.text}
 		</p>
 
-		<div class="sm:juftify-end flex w-full justify-start">
+		<div class="flex w-full justify-start sm:justify-end">
 			<Dialog.Root bind:open={dialogOpen}>
 				<Dialog.Trigger>
 					<Button
@@ -107,7 +148,7 @@
 					<Dialog.Header>
 						<Dialog.Title class="text-2xl">{cluster.title || 'Публикация'}</Dialog.Title>
 						<Dialog.Description>
-							{cluster.source} • {new Date(cluster.publishedAt).toLocaleString('ru-RU')}
+							{cluster.source_type} • {new Date(cluster.published_at).toLocaleString('ru-RU')}
 						</Dialog.Description>
 					</Dialog.Header>
 
@@ -130,7 +171,7 @@
 		</div>
 	</CardContent>
 
-	{#if cluster.duplicates.length > 0}
+	{#if cluster.mentions_count > 1}
 		<CardFooter class="pt-0">
 			<Collapsible bind:open={isOpen} class="w-full">
 				<CollapsibleTrigger>
@@ -140,7 +181,7 @@
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
-							<span>Похожие упоминания ({cluster.duplicates.length})</span>
+							<span>Ещё {cluster.mentions_count - 1} источника ▸</span>
 							<ChevronDown
 								size={16}
 								class="transition-transform duration-200 {isOpen ? 'rotate-180' : ''}"
@@ -150,25 +191,32 @@
 				</CollapsibleTrigger>
 
 				<CollapsibleContent class="space-y-3 pt-4">
-					{#each cluster.duplicates as dup}
-						<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
-							<div class="flex items-center justify-between">
-								<span class="text-sm font-medium">{dup.source}</span>
-								<span class="text-xs text-muted-foreground"
-									>{new Date(dup.publishedAt).toLocaleTimeString([], {
-										hour: '2-digit',
-										minute: '2-digit'
-									})}</span
-								>
-							</div>
-							<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
-							<div class="mt-1 flex items-center gap-2">
-								<span class="font-mono text-xs text-muted-foreground"
-									>Релевантность: {dup.mlScore > 0 ? (dup.mlScore * 100).toFixed(0) : '—'}%</span
-								>
-							</div>
+					{#if isLoadingDuplicates}
+						<div class="flex items-center justify-center p-4 text-muted-foreground">
+							<Loader2 class="h-5 w-5 animate-spin" />
+							<span class="ml-2 text-sm">Загрузка дубликатов...</span>
 						</div>
-					{/each}
+					{:else}
+						{#each duplicates as dup (dup.id)}
+							<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
+								<div class="flex items-center justify-between">
+									<span class="text-sm font-medium">{dup.source_type}</span>
+									<span class="text-xs text-muted-foreground">
+										{new Date(dup.published_at).toLocaleTimeString([], {
+											hour: '2-digit',
+											minute: '2-digit'
+										})}
+									</span>
+								</div>
+								<p class="line-clamp-1 text-sm text-muted-foreground">{dup.title || dup.text}</p>
+								<div class="mt-1 flex items-center gap-2">
+									<span class="font-mono text-xs text-muted-foreground">
+										Rel: {(dup.relevance_score * 100).toFixed(0)}%
+									</span>
+								</div>
+							</div>
+						{/each}
+					{/if}
 				</CollapsibleContent>
 			</Collapsible>
 		</CardFooter>
