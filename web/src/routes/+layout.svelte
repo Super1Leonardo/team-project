@@ -9,6 +9,7 @@
 	import { startCountdown, stopCountdown } from '$lib/stores/countdown';
 	import { healthPollingUrgently } from '$lib/stores/healthPolling';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
+	import NotificationPermissionDialog from '$lib/components/NotificationPermissionDialog.svelte';
 
 	let { children, data } = $props();
 
@@ -50,6 +51,8 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <Toaster richColors={true} position="top-right" />
+
+<NotificationPermissionDialog />
 
 <Tooltip.Provider>
 	<div class="pt-4 px-4 md:px-8">

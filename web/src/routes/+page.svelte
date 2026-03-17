@@ -9,10 +9,20 @@
 	import type { PageData } from './$types';
 	import type { MentionCluster } from '$lib/types/brandradar';
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { 
+		notificationsEnabled, 
+		notifiedCriticalIds,
+		addNotifiedId,
+		showCriticalArticleNotification,
+		initNotifications
+	} from '$lib/stores/notifications';
+	import { get } from 'svelte/store';
+	import { onMount } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	let currentPage = $state(parseInt(pageState.url.searchParams.get('page') || '1'));
+	let previousCriticalIds = $state<Set<number>>(new Set());
 
 	function goToPage(newPage: number) {
 		const url = new URL(pageState.url);
@@ -26,6 +36,51 @@
 
 	let clusters: MentionCluster[] = $derived((data.clusters as MentionCluster[]) || []);
 	const hasError = $derived(!!data.error);
+
+	function checkForNewCriticalArticles() {
+		if (!$notificationsEnabled) return;
+		
+		const currentCriticalIds = clusters
+			.filter(c => c.has_risk_words && !c.resolved)
+			.map(c => c.representative_mention_id);
+		
+		const newCriticalIds = currentCriticalIds.filter(
+			id => !previousCriticalIds.has(id) && !get(notifiedCriticalIds).has(id)
+		);
+		
+		for (const id of newCriticalIds) {
+			const cluster = clusters.find(c => c.representative_mention_id === id);
+			if (cluster) {
+				const title = cluster.title || 'Новая рисковая статья';
+				const preview = cluster.text?.substring(0, 100) || '';
+				
+				showCriticalArticleNotification(
+					'⚠️ Рисковая статья',
+					title + (preview ? ` - ${preview}...` : ''),
+					() => {
+						goto(`/?page=${currentPage}`);
+					}
+				);
+				
+				addNotifiedId(id);
+			}
+		}
+		
+		previousCriticalIds = new Set(currentCriticalIds);
+	}
+
+	$effect(() => {
+		if (clusters.length > 0) {
+			checkForNewCriticalArticles();
+		}
+	});
+
+	onMount(() => {
+		initNotifications();
+		previousCriticalIds = new Set(
+			clusters.filter(c => c.has_risk_words && !c.resolved).map(c => c.representative_mention_id)
+		);
+	});
 </script>
 
 <div class="container mx-auto max-w-3xl py-4">

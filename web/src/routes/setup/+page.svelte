@@ -7,7 +7,16 @@
 	import { Button } from '$lib/components/ui/shadcn/button';
 	import WordList from '$lib/components/WordList.svelte';
 	import { Slider } from '$lib/components/ui/shadcn/slider';
-	import { Loader2 } from '@lucide/svelte';
+	import { Switch } from '$lib/components/ui/shadcn/switch';
+	import { Loader2, Bell, BellOff } from '@lucide/svelte';
+	import { 
+		notificationsEnabled, 
+		notificationPermission,
+		requestNotificationPermission,
+		setNotificationsEnabled,
+		clearDontAskAgain,
+		initNotifications
+	} from '$lib/stores/notifications';
 
 	let { data } = $props();
 
@@ -41,6 +50,22 @@
 	$effect(() => {
 		saveRefreshInterval();
 	});
+
+	onMount(() => {
+		initNotifications();
+	});
+
+	async function toggleNotifications() {
+		if ($notificationsEnabled) {
+			setNotificationsEnabled(false);
+		} else {
+			const granted = await requestNotificationPermission();
+			if (granted) {
+				setNotificationsEnabled(true);
+				clearDontAskAgain();
+			}
+		}
+	}
 
 	let hasChanges = $derived(
 		keywords.join(',') !== (project?.keywords ?? []).join(',') ||
@@ -135,6 +160,41 @@
 								class="max-w-[200px]"
 							/>
 							<span class="text-sm text-muted-foreground">{refreshInterval} мин.</span>
+						</div>
+					</div>
+				</section>
+
+				<section class="rounded-lg border bg-card p-4">
+					<div class="flex flex-col gap-3">
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium">Уведомления</span>
+							<Switch
+								checked={$notificationsEnabled}
+								disabled={$notificationPermission === 'denied'}
+								onCheckedChange={() => toggleNotifications()}
+							/>
+						</div>
+						<div class="flex items-center gap-2 text-sm text-muted-foreground">
+							{#if $notificationPermission === 'granted'}
+								<Bell class="h-4 w-4" />
+								<span>Включены</span>
+							{:else if $notificationPermission === 'denied'}
+								<BellOff class="h-4 w-4" />
+								<span>Заблокированы в браузере</span>
+								<button
+									class="ml-2 text-blue-600 hover:underline"
+									onclick={() => {
+										if (typeof window !== 'undefined') {
+											window.open('chrome://settings/content/notifications', '_blank');
+										}
+									}}
+								>
+									Открыть настройки
+								</button>
+							{:else}
+								<BellOff class="h-4 w-4" />
+								<span>Нажмите переключатель для включения</span>
+							{/if}
 						</div>
 					</div>
 				</section>
