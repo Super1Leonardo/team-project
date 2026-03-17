@@ -7,19 +7,43 @@
 	import { invalidateAll } from '$app/navigation';
 	import { onMount, onDestroy } from 'svelte';
 	import { startCountdown, stopCountdown } from '$lib/stores/countdown';
+	import { healthPollingUrgently } from '$lib/stores/healthPolling';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 
 	let { children, data } = $props();
+
+	let healthPollInterval: ReturnType<typeof setInterval> | null = null;
+
+	function startHealthPolling(intervalSeconds: number) {
+		stopHealthPolling();
+		healthPollInterval = setInterval(() => {
+			invalidateAll();
+		}, intervalSeconds * 1000);
+	}
+
+	function stopHealthPolling() {
+		if (healthPollInterval) {
+			clearInterval(healthPollInterval);
+			healthPollInterval = null;
+		}
+	}
 
 	onMount(() => {
 		startCountdown(async () => {
 			await invalidateAll();
 			toast.info('Данные обновлены');
 		});
+
+		startHealthPolling(60);
+
+		$effect(() => {
+			startHealthPolling($healthPollingUrgently ? 1 : 60);
+		});
 	});
 
 	onDestroy(() => {
 		stopCountdown();
+		stopHealthPolling();
 	});
 </script>
 
