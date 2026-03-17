@@ -11,7 +11,6 @@
 		first_seen_at: now,
 		last_seen_at: now,
 		representative_mention_id: 100,
-		id: 100,
 		raw_post_id: 501,
 		project_id: 2,
 		source_id: 10,

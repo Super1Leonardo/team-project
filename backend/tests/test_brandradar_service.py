@@ -175,6 +175,7 @@ class _ServiceStore:
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict:
         self.list_mentions_calls.append(
             {
@@ -188,6 +189,7 @@ class _ServiceStore:
                 "primary_only": primary_only,
                 "relevant_only": relevant_only,
                 "include_total": include_total,
+                "risk_words_only": risk_words_only,
             }
         )
         return {
@@ -519,6 +521,7 @@ class BrandRadarServiceTests(unittest.IsolatedAsyncioTestCase):
                     "primary_only": False,
                     "relevant_only": True,
                     "include_total": False,
+                    "risk_words_only": False,
                 }
             ],
         )

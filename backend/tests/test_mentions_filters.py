@@ -57,6 +57,7 @@ class FakeBrandRadarService:
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict:
         self.mention_calls.append(
             {
@@ -70,6 +71,7 @@ class FakeBrandRadarService:
                 "primary_only": primary_only,
                 "relevant_only": relevant_only,
                 "include_total": include_total,
+                "risk_words_only": risk_words_only,
             }
         )
         return {"items": [_build_mention()], "total": 1}
@@ -85,6 +87,7 @@ class FakeBrandRadarService:
         primary_only: bool = True,
         relevant_only: bool = True,
         include_total: bool = False,
+        risk_words_only: bool = False,
     ) -> dict:
         self.default_feed_calls.append(
             {
@@ -96,6 +99,7 @@ class FakeBrandRadarService:
                 "primary_only": primary_only,
                 "relevant_only": relevant_only,
                 "include_total": include_total,
+                "risk_words_only": risk_words_only,
             }
         )
         return {"items": [_build_mention()], "total": None}
@@ -109,6 +113,7 @@ class FakeBrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict:
         self.cluster_calls.append(
             {
@@ -118,6 +123,7 @@ class FakeBrandRadarService:
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
                 "sentiment_label": sentiment_label,
+                "risk_words_only": risk_words_only,
             }
         )
         mention = _build_mention()
@@ -144,6 +150,7 @@ class FakeBrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict:
         self.default_cluster_calls.append(
             {
@@ -152,6 +159,7 @@ class FakeBrandRadarService:
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
                 "sentiment_label": sentiment_label,
+                "risk_words_only": risk_words_only,
             }
         )
         mention = _build_mention()
@@ -228,6 +236,7 @@ def test_mentions_route_applies_confidence_period_and_pagination() -> None:
     assert call["primary_only"] is False
     assert call["relevant_only"] is False
     assert call["include_total"] is True
+    assert call["risk_words_only"] is False
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
@@ -257,6 +266,7 @@ def test_mentions_route_accepts_limit_as_page_size_alias() -> None:
     assert call["primary_only"] is False
     assert call["relevant_only"] is False
     assert call["include_total"] is True
+    assert call["risk_words_only"] is False
 
 
 def test_mentions_route_passes_dedup_group_filter() -> None:
@@ -278,6 +288,7 @@ def test_mentions_route_passes_dedup_group_filter() -> None:
     assert call["dedup_group_id"] == 77
     assert call["primary_only"] is False
     assert call["include_total"] is False
+    assert call["risk_words_only"] is False
 
 
 def test_mentions_route_passes_fast_path_flags() -> None:
@@ -302,6 +313,7 @@ def test_mentions_route_passes_fast_path_flags() -> None:
     assert call["primary_only"] is True
     assert call["relevant_only"] is True
     assert call["include_total"] is False
+    assert call["risk_words_only"] is False
 
 
 def test_feed_route_uses_default_fast_flags() -> None:
@@ -329,6 +341,7 @@ def test_feed_route_uses_default_fast_flags() -> None:
     assert call["primary_only"] is True
     assert call["relevant_only"] is True
     assert call["include_total"] is False
+    assert call["risk_words_only"] is False
 
 
 def test_feed_clusters_route_uses_default_cluster_feed() -> None:
@@ -356,6 +369,7 @@ def test_feed_clusters_route_uses_default_cluster_feed() -> None:
     assert call["page_size"] == 25
     assert call["confidence_threshold"] == 0.7
     assert call["sentiment_label"] == "negative"
+    assert call["risk_words_only"] is False
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
@@ -389,6 +403,7 @@ def test_clusters_route_applies_filters_and_limit_alias() -> None:
     assert call["page_size"] == 25
     assert call["confidence_threshold"] == 0.5
     assert call["sentiment_label"] == "negative"
+    assert call["risk_words_only"] is False
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=30, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=30) + timedelta(seconds=5)
