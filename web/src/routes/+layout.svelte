@@ -52,7 +52,7 @@
 <Toaster richColors={true} position="top-right" />
 
 <Tooltip.Provider>
-	<div class="pt-4 px-8">
+	<div class="pt-4 px-4 md:px-8">
 		<Header health={data.health} />
 		<div class="max-w-prose mx-auto">
 			{@render children()}
