@@ -30,6 +30,7 @@
 		tDbStatus,
 		type SourceType
 	} from '$lib/utils';
+	import { healthPollingUrgently } from '$lib/stores/healthPolling';
 
 	let { data } = $props();
 
@@ -40,6 +41,10 @@
 	let sourceConfig = $state('');
 	let pollInterval = $state(3600);
 	let isSubmittingNew = $state(false);
+
+	$effect(() => {
+		healthPollingUrgently.set(statusOpen);
+	});
 
 	const project = $derived(data.project);
 	const health = $derived(data.health);
