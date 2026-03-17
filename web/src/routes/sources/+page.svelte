@@ -331,7 +331,7 @@
 											</form>
 										</div>
 
-										<span class="text-sm sm:hidden {getStatusColor(status)}">
+										<span class="text-sm sm:hidden {getStatusColor(status)} truncate">
 											• {getStatusText(status)}
 										</span>
 									</div>
