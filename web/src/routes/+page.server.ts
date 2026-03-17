@@ -3,15 +3,6 @@ import { api } from '$lib/api/client';
 
 const API_BASE_URL = process.env.PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
 
-interface FeedResponse {
-	data: unknown[];
-	meta?: {
-		total: number;
-		page: number;
-		page_size: number;
-	};
-}
-
 export const load: PageServerLoad = async ({ url }) => {
 	let mentions: any[] = [];
 	let error: string | undefined;
@@ -31,19 +22,19 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (period) queryParams.set('period', period);
 	if (sentiment) queryParams.set('sentiment', sentiment);
 
-	const mentionsRes = await api.get<FeedResponse>(
+	const mentionsRes = await api.get<unknown[]>(
 		`${API_BASE_URL}/api/feed?${queryParams.toString()}`
 	);
 
 	if (mentionsRes.error) {
 		error = mentionsRes.error.message;
 	} else if (mentionsRes.data) {
-		mentions = mentionsRes.data.data as any[];
-		if (mentionsRes.data.meta) {
+		mentions = mentionsRes.data as any[];
+		if (mentionsRes.meta) {
 			pagination = {
-				total: mentionsRes.data.meta.total,
-				page: mentionsRes.data.meta.page,
-				pageSize: mentionsRes.data.meta.page_size
+				total: mentionsRes.meta.total || 0,
+				page: mentionsRes.meta.page || 1,
+				pageSize: mentionsRes.meta.page_size || perPage
 			};
 		}
 	}
