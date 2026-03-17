@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const confidence = url.searchParams.get('confidence');
 	const period = url.searchParams.get('period');
 	const sentiment = url.searchParams.get('sentiment');
+	const riskWordsOnly = url.searchParams.get('risk_words_only') === 'true';
 
 	const queryParams = new URLSearchParams();
 	queryParams.set('page', String(page));
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (confidence) queryParams.set('confidence', confidence);
 	if (period) queryParams.set('period', period);
 	if (sentiment) queryParams.set('sentiment', sentiment);
+	if (riskWordsOnly) queryParams.set('risk_words_only', 'true');
 
 	const clustersRes = await api.get<MentionCluster[]>(
 		`${API_BASE_URL}/api/feed/clusters?${queryParams.toString()}`

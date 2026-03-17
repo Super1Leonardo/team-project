@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
   const urlConfidence = url.searchParams.get("confidence");
   const urlPeriod = url.searchParams.get("period");
-  const sentiment = url.searchParams.get("sentiment");
+  // Note: sentiment is read from URL but NOT passed to API (filters in URL but not applied to analytics)
 
   const confidence = urlConfidence || "0.7";
   const period = urlPeriod || "7d";
@@ -24,7 +24,6 @@ export const load: PageServerLoad = async ({ url }) => {
     relevant_only: "false",
     include_total: "false",
   });
-  if (sentiment) queryParams.set("sentiment", sentiment);
 
   const mentionsRes = await api.get<any[]>(
     `${API_BASE_URL}/api/feed?${queryParams.toString()}`,

@@ -47,7 +47,9 @@ DEFAULT_BOOTSTRAP_SOURCES = (
     },
     {
         "source_type": "rss",
-        "source_config": {"url": "http://rss-brandradar.ingress.prodcontest.com/rss.xml"},
+        "source_config": {
+            "url": "http://rss-brandradar.ingress.prodcontest.com/rss.xml"
+        },
         "is_active": True,
         "poll_interval_s": 300,
     },
@@ -310,7 +312,9 @@ class BrandRadarPostgresStore:
     def bootstrap_default_project_and_sources(self) -> None:
         with self._connect(autocommit=False) as conn, conn.cursor() as cur:
             project_id, project_created = self._ensure_bootstrap_project(cur)
-            inserted_sources, updated_sources = self._ensure_bootstrap_sources(cur, project_id)
+            inserted_sources, updated_sources = self._ensure_bootstrap_sources(
+                cur, project_id
+            )
             if project_created or inserted_sources > 0 or updated_sources > 0:
                 conn.commit()
 
@@ -352,7 +356,9 @@ class BrandRadarPostgresStore:
             raise RuntimeError("Failed to create bootstrap project.")
         return int(project_row["id"]), True
 
-    def _ensure_bootstrap_sources(self, cur: psycopg.Cursor, project_id: int) -> tuple[int, int]:
+    def _ensure_bootstrap_sources(
+        self, cur: psycopg.Cursor, project_id: int
+    ) -> tuple[int, int]:
         cur.execute(
             """
             SELECT id, source_type, source_config
@@ -659,7 +665,9 @@ class BrandRadarPostgresStore:
 
         return self.get_project(project_id)
 
-    def reset_project_mentions_for_reprocessing(self, project_id: int) -> dict[str, int]:
+    def reset_project_mentions_for_reprocessing(
+        self, project_id: int
+    ) -> dict[str, int]:
         self._ensure_project_exists(project_id)
 
         with self._connect(autocommit=False) as conn, conn.cursor() as cur:
@@ -763,7 +771,9 @@ class BrandRadarPostgresStore:
             raise DomainValidationError(
                 f"Unsupported source_type '{source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
             )
-        normalized_source_config = self._normalize_source_config(source_type, source_config)
+        normalized_source_config = self._normalize_source_config(
+            source_type, source_config
+        )
 
         self._ensure_project_exists(project_id)
 
@@ -895,12 +905,16 @@ class BrandRadarPostgresStore:
         poll_interval_s: int | None = None,
     ) -> dict[str, Any]:
         source = self.get_source(project_id, source_id)
-        next_source_type = source_type if source_type is not None else source["source_type"]
+        next_source_type = (
+            source_type if source_type is not None else source["source_type"]
+        )
         if next_source_type not in SUPPORTED_SOURCE_TYPES:
             raise DomainValidationError(
                 f"Unsupported source_type '{next_source_type}'. Use one of: {', '.join(SUPPORTED_SOURCE_TYPES)}."
             )
-        next_source_config = source_config if source_config is not None else source["source_config"]
+        next_source_config = (
+            source_config if source_config is not None else source["source_config"]
+        )
         normalized_source_config = self._normalize_source_config(
             next_source_type,
             next_source_config,
@@ -1326,9 +1340,7 @@ class BrandRadarPostgresStore:
                 processed_at = item.get("processed_at") or datetime.now(UTC)
                 embedding = item.get("embedding")
                 embedding_literal = (
-                    self._vector_literal(embedding)
-                    if embedding is not None
-                    else None
+                    self._vector_literal(embedding) if embedding is not None else None
                 )
                 raw_post = raw_posts[int(item["raw_post_id"])]
                 project_id = int(item.get("project_id", raw_post["project_id"]))
@@ -1477,6 +1489,7 @@ class BrandRadarPostgresStore:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         conditions = [
             "m.project_id = %s",
@@ -1495,6 +1508,9 @@ class BrandRadarPostgresStore:
         if sentiment_label is not None:
             conditions.append("m.sentiment_label = %s")
             params.append(sentiment_label)
+
+        if risk_words_only:
+            conditions.append("m.has_risk_words = TRUE")
 
         where_clause = " AND ".join(conditions)
         offset = (page - 1) * page_size
@@ -1698,7 +1714,9 @@ class BrandRadarPostgresStore:
 
         return [dict(row) for row in rows]
 
-    def get_raw_post_processing_stats(self, project_id: int | None = None) -> dict[str, int]:
+    def get_raw_post_processing_stats(
+        self, project_id: int | None = None
+    ) -> dict[str, int]:
         params: list[Any] = []
         where_clause = ""
         if project_id is not None:
@@ -1755,6 +1773,7 @@ class BrandRadarPostgresStore:
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         conditions = ["m.project_id = %s"]
         params: list[Any] = [project_id]
@@ -1780,6 +1799,9 @@ class BrandRadarPostgresStore:
         if dedup_group_id is not None:
             conditions.append("m.dedup_group_id = %s")
             params.append(dedup_group_id)
+
+        if risk_words_only:
+            conditions.append("m.has_risk_words = TRUE")
 
         where_clause = " AND ".join(conditions)
         offset = (page - 1) * page_size

@@ -2,7 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/shadcn/select';
-	import { confidence, period, sentiment } from '$lib/stores/filters';
+	import * as Checkbox from '$lib/components/ui/shadcn/checkbox';
+	import { confidence, period, sentiment, riskWordsOnly } from '$lib/stores/filters';
 
 	const DEFAULTS = {
 		confidence: '0.7',
@@ -13,9 +14,11 @@
 		const urlConf = page.url.searchParams.get('confidence');
 		const urlPeriod = page.url.searchParams.get('period');
 		const urlSentiment = page.url.searchParams.get('sentiment');
+		const urlRiskWords = page.url.searchParams.get('risk_words_only');
 		confidence.set(urlConf || DEFAULTS.confidence);
 		period.set(urlPeriod || DEFAULTS.period);
 		sentiment.set(urlSentiment || null);
+		riskWordsOnly.set(urlRiskWords === 'true');
 	}
 
 	syncFromUrl();
@@ -35,6 +38,17 @@
 		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
 	}
 
+	function updateRiskWordsFilter(checked: boolean) {
+		riskWordsOnly.set(checked);
+		const url = new URL(page.url);
+		if (checked) {
+			url.searchParams.set('risk_words_only', 'true');
+		} else {
+			url.searchParams.delete('risk_words_only');
+		}
+		goto(url, { keepFocus: true, noScroll: true, invalidateAll: false });
+	}
+
 	function getSentimentLabel(value: string | null): string {
 		switch (value) {
 			case 'positive':
@@ -49,8 +63,10 @@
 	}
 </script>
 
-<div class="flex w-full flex-wrap gap-3 rounded-lg border bg-card p-3 sm:w-fit sm:gap-4 sm:p-4">
-	<div class="flex min-w-[140px] flex-col gap-1.5">
+<div
+	class="flex w-full flex-wrap items-end gap-3 rounded-lg border bg-card p-3 sm:w-fit sm:gap-4 sm:p-4"
+>
+	<div class="flex min-w-35 flex-col gap-1.5">
 		<span class="text-xs font-medium text-muted-foreground">Тональность</span>
 		<Select.Root
 			type="single"
@@ -113,5 +129,15 @@
 				<Select.Item value="30d">Последние 30 дней</Select.Item>
 			</Select.Content>
 		</Select.Root>
+	</div>
+
+	<div class="flex items-center gap-2 mb-2">
+		<Checkbox.Root
+			checked={$riskWordsOnly}
+			onCheckedChange={(checked) => updateRiskWordsFilter(checked === true)}
+		/>
+		<button onclick={() => updateRiskWordsFilter(!$riskWordsOnly)} class="text-sm cursor-pointer">
+			Только рисковые
+		</button>
 	</div>
 </div>

@@ -25,7 +25,9 @@ class BrandRadarService:
         return await asyncio.to_thread(self.runtime.postgres_store.list_projects)
 
     async def get_project(self, project_id: int) -> dict[str, Any]:
-        return await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.get_project, project_id
+        )
 
     async def create_project(self, payload) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -94,7 +96,9 @@ class BrandRadarService:
             poll_interval_s=payload.poll_interval_s,
         )
 
-    async def update_source(self, project_id: int, source_id: int, payload) -> dict[str, Any]:
+    async def update_source(
+        self, project_id: int, source_id: int, payload
+    ) -> dict[str, Any]:
         return await asyncio.to_thread(
             self.runtime.postgres_store.update_source,
             project_id,
@@ -128,7 +132,9 @@ class BrandRadarService:
 
         source_id_set = set(source_ids or [])
         if source_id_set:
-            sources = [source for source in sources if int(source["id"]) in source_id_set]
+            sources = [
+                source for source in sources if int(source["id"]) in source_id_set
+            ]
 
         if not sources:
             raise ResourceNotFoundError("No matching active sources were found.")
@@ -146,7 +152,9 @@ class BrandRadarService:
             "sources_triggered": len(sources),
         }
 
-    async def get_collector_status(self, project_id: int | None = None) -> dict[str, Any]:
+    async def get_collector_status(
+        self, project_id: int | None = None
+    ) -> dict[str, Any]:
         if project_id is not None:
             await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
 
@@ -237,7 +245,9 @@ class BrandRadarService:
         remote_results: list[dict[str, Any]] = []
         if ml_items:
             remote_response = await self.runtime.external_ml_gateway.predict(ml_items)
-            remote_results = self.runtime.ml_normalizer.extract_remote_results(remote_response)
+            remote_results = self.runtime.ml_normalizer.extract_remote_results(
+                remote_response
+            )
 
         response_payload = {
             "queued_count": len(items),
@@ -294,7 +304,10 @@ class BrandRadarService:
             mention_rows,
         )
         message = "ML results stored and synced to ClickHouse."
-        if result["stored_count"] > 0 and result["synced_count"] < result["stored_count"]:
+        if (
+            result["stored_count"] > 0
+            and result["synced_count"] < result["stored_count"]
+        ):
             message = "ML results stored; ClickHouse sync is pending for some rows."
         return {
             "stored_count": result["stored_count"],
@@ -310,7 +323,9 @@ class BrandRadarService:
             "projects": {str(key): value for key, value in result["projects"].items()},
         }
 
-    async def list_raw_posts(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_raw_posts(
+        self, project_id: int, limit: int = 100
+    ) -> list[dict[str, Any]]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
             self.runtime.postgres_store.list_raw_posts,
@@ -331,6 +346,7 @@ class BrandRadarService:
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
@@ -345,6 +361,7 @@ class BrandRadarService:
             primary_only=primary_only,
             relevant_only=relevant_only,
             include_total=include_total,
+            risk_words_only=risk_words_only,
         )
 
     async def update_mention_resolved(
@@ -373,8 +390,11 @@ class BrandRadarService:
         primary_only: bool = True,
         relevant_only: bool = True,
         include_total: bool = False,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
-        project = await asyncio.to_thread(self.runtime.postgres_store.get_preferred_project)
+        project = await asyncio.to_thread(
+            self.runtime.postgres_store.get_preferred_project
+        )
         mentions_page = await asyncio.to_thread(
             self.runtime.postgres_store.list_mentions,
             int(project["id"]),
@@ -386,6 +406,7 @@ class BrandRadarService:
             primary_only=primary_only,
             relevant_only=relevant_only,
             include_total=include_total,
+            risk_words_only=risk_words_only,
         )
         return {
             **mentions_page,
@@ -400,8 +421,11 @@ class BrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
-        project = await asyncio.to_thread(self.runtime.postgres_store.get_preferred_project)
+        project = await asyncio.to_thread(
+            self.runtime.postgres_store.get_preferred_project
+        )
         clusters_page = await asyncio.to_thread(
             self.runtime.postgres_store.list_clusters,
             int(project["id"]),
@@ -410,6 +434,7 @@ class BrandRadarService:
             confidence_threshold=confidence_threshold,
             published_after=published_after,
             sentiment_label=sentiment_label,
+            risk_words_only=risk_words_only,
         )
         return {
             **clusters_page,
@@ -425,6 +450,7 @@ class BrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
@@ -435,6 +461,7 @@ class BrandRadarService:
             confidence_threshold=confidence_threshold,
             published_after=published_after,
             sentiment_label=sentiment_label,
+            risk_words_only=risk_words_only,
         )
 
     async def get_health(self) -> dict[str, Any]:
@@ -506,10 +533,14 @@ class BrandRadarService:
                 "ml_error": ml_error,
                 "ml_queue_size": queue_size,
             }
-            gateway_settings = getattr(self.runtime.external_ml_gateway, "settings", None)
+            gateway_settings = getattr(
+                self.runtime.external_ml_gateway, "settings", None
+            )
             ttl_seconds = max(
                 0.0,
-                float(getattr(gateway_settings, "backend_health_cache_ttl_seconds", 2.0)),
+                float(
+                    getattr(gateway_settings, "backend_health_cache_ttl_seconds", 2.0)
+                ),
             )
             self._health_cache = dict(result)
             self._health_cache_expires_at = time.monotonic() + ttl_seconds
@@ -522,11 +553,14 @@ class BrandRadarService:
         except Exception:
             logger.exception("Background collector task failed.")
 
-    def _schedule_project_reprocessing(self, project_id: int, *, reset_mentions: bool) -> None:
+    def _schedule_project_reprocessing(
+        self, project_id: int, *, reset_mentions: bool
+    ) -> None:
         existing_task = self._project_reprocessing_tasks.get(project_id)
         if existing_task is not None and not existing_task.done():
             self._pending_project_reprocessing[project_id] = (
-                self._pending_project_reprocessing.get(project_id, False) or reset_mentions
+                self._pending_project_reprocessing.get(project_id, False)
+                or reset_mentions
             )
             logger.info(
                 "Project %s reprocessing is already running; queued a follow-up run.",
@@ -576,7 +610,9 @@ class BrandRadarService:
 
             if should_drain_queue:
                 try:
-                    await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
+                    await self.runtime.ml_worker.run_until_project_queue_drained(
+                        project_id
+                    )
                 except Exception:
                     logger.exception(
                         "Project %s was updated and requeued, but background reprocessing failed.",

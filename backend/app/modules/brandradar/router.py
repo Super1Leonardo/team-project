@@ -499,6 +499,7 @@ async def list_mentions(
     primary_only: bool = Query(default=False),
     relevant_only: bool = Query(default=False),
     include_total: bool = Query(default=True),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -513,6 +514,7 @@ async def list_mentions(
         primary_only=primary_only,
         relevant_only=relevant_only,
         include_total=include_total,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         mentions_page["items"],
@@ -555,6 +557,7 @@ async def list_default_feed(
     primary_only: bool = Query(default=True),
     relevant_only: bool = Query(default=True),
     include_total: bool = Query(default=False),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -567,6 +570,7 @@ async def list_default_feed(
         primary_only=primary_only,
         relevant_only=relevant_only,
         include_total=include_total,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         mentions_page["items"],
@@ -587,6 +591,7 @@ async def list_default_cluster_feed(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -596,6 +601,7 @@ async def list_default_cluster_feed(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         clusters_page["items"],
@@ -617,6 +623,7 @@ async def list_clusters(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -627,6 +634,7 @@ async def list_clusters(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         clusters_page["items"],
