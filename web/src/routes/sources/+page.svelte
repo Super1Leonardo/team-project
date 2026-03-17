@@ -533,7 +533,6 @@
 						>
 							<option value="telegram">Telegram</option>
 							<option value="rss">RSS</option>
-							<option value="website">Website</option>
 						</select>
 					</div>
 

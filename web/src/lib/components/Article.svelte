@@ -152,7 +152,11 @@
 				console.error('Failed to update resolved status:', response.error.message);
 			} else {
 				cluster.resolved = newResolvedState;
-				toast.success(newResolvedState ? 'Статья отмечена как обработанная' : 'Статья отмечена как необработанная');
+				toast.success(
+					newResolvedState
+						? 'Статья отмечена как обработанная'
+						: 'Статья отмечена как необработанная'
+				);
 				goto(pageState.url, { invalidateAll: true });
 			}
 		} catch (error) {
@@ -273,7 +277,7 @@
 					size="sm"
 					disabled={isResolving}
 					onclick={() => toggleResolved()}
-					class="mt-2"
+					class="mt-4"
 				>
 					{#if isResolving}
 						<Loader2 class="animate-spin" />
