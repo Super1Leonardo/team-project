@@ -260,11 +260,23 @@
 					{:else if duplicates.length === 0}
 						<div class="p-3 text-sm text-muted-foreground">Похожие публикации не найдены.</div>
 					{:else}
-						<ul class="max-h-10">
+						<ul class="max-h-30 mb-2 overflow-auto">
 							{#each duplicates as dup (dup.id)}
 								<li class="flex flex-col gap-1 border-l-2 border-muted pl-4">
 									<div class="flex items-center justify-between gap-3">
-										<span class="text-sm font-medium">{dup.source_type}</span>
+										<span class="text-sm font-medium">
+											{dup.source_type}
+											{#if dup.url}
+												<a
+													href={dup.url}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+												>
+													Оригинал <ExternalLink class="h-3 w-3" />
+												</a>
+											{/if}
+										</span>
 										<span class="text-xs text-muted-foreground">
 											{formatTime(dup.published_at)}
 										</span>
@@ -274,16 +286,6 @@
 										<span class="font-mono text-xs text-muted-foreground">
 											{(dup.relevance_score * 100).toFixed(0)}%
 										</span>
-										{#if dup.url}
-											<a
-												href={dup.url}
-												target="_blank"
-												rel="noopener noreferrer"
-												class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-											>
-												Оригинал <ExternalLink class="h-3 w-3" />
-											</a>
-										{/if}
 									</div>
 								</li>
 							{/each}
