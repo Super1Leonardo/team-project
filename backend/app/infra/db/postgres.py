@@ -1511,6 +1511,7 @@ class BrandRadarPostgresStore:
 
         if risk_words_only:
             conditions.append("m.has_risk_words = TRUE")
+            conditions.append("m.resolved = FALSE")
 
         where_clause = " AND ".join(conditions)
         offset = (page - 1) * page_size
@@ -1525,6 +1526,7 @@ class BrandRadarPostgresStore:
                     m.sentiment_score,
                     m.sentiment_label,
                     m.has_risk_words,
+                    m.resolved,
                     m.dedup_group_id,
                     m.is_primary,
                     m.processed_at,

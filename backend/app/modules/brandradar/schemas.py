@@ -247,6 +247,7 @@ class MentionClusterResponse(BaseModel):
     sentiment_score: float
     sentiment_label: SentimentLabel
     has_risk_words: bool
+    resolved: bool = False
     processed_at: datetime
 
 

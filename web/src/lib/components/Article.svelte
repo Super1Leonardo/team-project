@@ -19,7 +19,7 @@
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import type { Mention, MentionCluster, SentimentLabel } from '$lib/types/brandradar';
 	import { tSentiment } from '$lib/utils';
-	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
+	import { ChevronDown, ExternalLink, Loader2, Check, CheckCircle2 } from '@lucide/svelte';
 
 	type DuplicateMention = Pick<
 		Mention,
@@ -36,6 +36,7 @@
 	let duplicatesError = $state<string | null>(null);
 	let isLoadingDuplicates = $state(false);
 	let duplicatesLoadAttempted = $state(false);
+	let isResolving = $state(false);
 
 	const sentimentColor = $derived(
 		cluster.sentiment_label === 'negative'
@@ -131,6 +132,30 @@
 			isLoadingDuplicates = false;
 		}
 	}
+
+	async function toggleResolved() {
+		if (isResolving) return;
+		
+		const newResolvedState = !cluster.resolved;
+		isResolving = true;
+		
+		try {
+			const response = await api.post<{ resolved: boolean }>(
+				`/api/projects/${cluster.project_id}/mentions/${cluster.representative_mention_id}/resolved`,
+				{ resolved: newResolvedState }
+			);
+			
+			if (response.error) {
+				console.error('Failed to update resolved status:', response.error.message);
+			} else {
+				cluster.resolved = newResolvedState;
+			}
+		} catch (error) {
+			console.error('Error updating resolved status:', error);
+		} finally {
+			isResolving = false;
+		}
+	}
 </script>
 
 <Card class={['mb-4', cluster.has_risk_words && 'shadow-xl shadow-destructive/25']}>
@@ -164,7 +189,19 @@
 				<Tooltip.Content>Релевантность статьи</Tooltip.Content>
 			</Tooltip.Root>
 
-			{#if cluster.has_risk_words}
+			{#if cluster.resolved}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<Badge
+							variant="outline"
+							class="flex h-5 w-5 cursor-help items-center justify-center border-green-500 bg-green-100 p-0 text-lg font-bold text-green-600 shadow shadow-green-500/20"
+						>
+							<Check class="h-3 w-3" />
+						</Badge>
+					</Tooltip.Trigger>
+					<Tooltip.Content>Обработано</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if cluster.has_risk_words}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						<Badge
@@ -219,6 +256,24 @@
 							>
 								Открыть оригинал <ExternalLink class="h-4 w-4" />
 							</a>
+						{/if}
+
+						{#if cluster.has_risk_words || cluster.resolved}
+							<div class="flex items-center gap-2 pt-2">
+								<Button
+									variant={cluster.resolved ? 'outline' : 'default'}
+									size="sm"
+									disabled={isResolving}
+									onclick={() => toggleResolved()}
+								>
+									{#if isResolving}
+										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+									{:else}
+										<CheckCircle2 class="mr-2 h-4 w-4" />
+									{/if}
+									{cluster.resolved ? 'Отметить как необработанное' : 'Отметить как обработанное'}
+								</Button>
+							</div>
 						{/if}
 					</div>
 				</Dialog.Content>

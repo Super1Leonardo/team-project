@@ -143,6 +143,7 @@ export interface MentionCluster {
 	sentiment_score: number;
 	sentiment_label: SentimentLabel;
 	has_risk_words: boolean;
+	resolved?: boolean;
 	processed_at: string;
 }
 
