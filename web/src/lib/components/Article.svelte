@@ -136,16 +136,16 @@
 
 	async function toggleResolved() {
 		if (isResolving) return;
-		
+
 		const newResolvedState = !cluster.resolved;
 		isResolving = true;
-		
+
 		try {
 			const response = await api.post<{ resolved: boolean }>(
 				`/api/projects/${cluster.project_id}/mentions/${cluster.representative_mention_id}/resolved`,
 				{ resolved: newResolvedState }
 			);
-			
+
 			if (response.error) {
 				console.error('Failed to update resolved status:', response.error.message);
 			} else {
@@ -224,24 +224,7 @@
 			{cluster.text}
 		</p>
 
-		<div class="flex w-full items-center justify-start gap-2">
-			{#if cluster.has_risk_words || cluster.resolved}
-				<Button
-					variant={cluster.resolved ? 'outline' : 'default'}
-					size="sm"
-					disabled={isResolving}
-					onclick={() => toggleResolved()}
-					class="mt-2"
-				>
-					{#if isResolving}
-						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-					{:else}
-						<CheckCircle2 class="mr-2 h-4 w-4" />
-					{/if}
-					{cluster.resolved ? 'Необработанное' : 'Обработано'}
-				</Button>
-			{/if}
-
+		<div class="flex flex-row-reverse w-full items-center justify-between gap-2">
 			<Dialog.Root bind:open={dialogOpen}>
 				<Dialog.Trigger>
 					<Button
@@ -279,6 +262,23 @@
 					</div>
 				</Dialog.Content>
 			</Dialog.Root>
+
+			{#if cluster.has_risk_words || cluster.resolved}
+				<Button
+					variant={cluster.resolved ? 'outline' : 'default'}
+					size="sm"
+					disabled={isResolving}
+					onclick={() => toggleResolved()}
+					class="mt-2"
+				>
+					{#if isResolving}
+						<Loader2 class="animate-spin" />
+					{:else}
+						<CheckCircle2 />
+					{/if}
+					{cluster.resolved ? 'Пометить как необработанное' : 'Пометить как обработанное'}
+				</Button>
+			{/if}
 		</div>
 	</CardContent>
 
