@@ -9,9 +9,10 @@ test.describe('cluster card', () => {
 
 		await page.getByRole('button', { name: /читать далее/i }).last().click();
 
-		await expect(page.getByRole('dialog')).toBeVisible();
-		await expect(page.getByText('Демо-карточка для e2e-проверки загрузки дублей.')).toBeVisible();
-		await expect(page.getByRole('link', { name: /открыть оригинал/i })).toHaveAttribute(
+		const dialog = page.getByRole('dialog');
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByText('Демо-карточка для e2e-проверки загрузки дублей.')).toBeVisible();
+		await expect(dialog.getByRole('link', { name: /открыть оригинал/i })).toHaveAttribute(
 			'href',
 			'https://example.com/demo-cluster'
 		);
