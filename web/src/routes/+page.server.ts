@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	let pagination: { total: number; page: number; pageSize: number } | undefined;
 
 	const page = parseInt(url.searchParams.get('page') || '1');
-	const perPage = parseInt(url.searchParams.get('per_page') || '50');
+	const perPage = parseInt(url.searchParams.get('per_page') || '20');
 	const confidence = url.searchParams.get('confidence');
 	const period = url.searchParams.get('period');
 	const sentiment = url.searchParams.get('sentiment');
