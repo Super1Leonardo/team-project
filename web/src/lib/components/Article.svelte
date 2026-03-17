@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { PUBLIC_BRANDRADAR_API_BASE_URL } from '$env/static/public';
 	import { page as pageState } from '$app/state';
 	import { api } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/shadcn/badge';
@@ -18,42 +17,27 @@
 	} from '$lib/components/ui/shadcn/collapsible';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
+	import type { Mention, MentionCluster, SentimentLabel } from '$lib/types/brandradar';
+	import { tSentiment } from '$lib/utils';
 	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
-	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
-	type DuplicateMention = {
-		id: number;
-		source_type: string;
-		title?: string | null;
-		text: string;
-		published_at: string;
-		relevance_score: number;
-	};
+	type DuplicateMention = Pick<
+		Mention,
+		'id' | 'source_type' | 'title' | 'text' | 'published_at' | 'relevance_score'
+	>;
 
-	let { cluster }: { cluster: any } = $props();
+	let { cluster }: { cluster: MentionCluster } = $props();
 
-	const API_BASE_URL = PUBLIC_BRANDRADAR_API_BASE_URL || 'http://localhost:8000';
-	const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
-		hour: '2-digit',
-		minute: '2-digit',
-		timeZone: 'Europe/Moscow'
-	});
-	const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		timeZone: 'Europe/Moscow'
-	});
+	const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 	let isOpen = $state(false);
 	let dialogOpen = $state(false);
 	let duplicates = $state<DuplicateMention[]>([]);
+	let duplicatesError = $state<string | null>(null);
 	let isLoadingDuplicates = $state(false);
 	let duplicatesLoadAttempted = $state(false);
 
-	let sentimentColor = $derived(
+	const sentimentColor = $derived(
 		cluster.sentiment_label === 'negative'
 			? 'bg-red-100 border-red-500 text-red-800'
 			: cluster.sentiment_label === 'positive'
@@ -61,25 +45,55 @@
 				: 'bg-gray-100 border-gray-500 text-gray-800'
 	);
 
-	let relevancePercent = $derived((cluster.relevance_score * 100).toFixed(0));
+	const relevancePercent = $derived((cluster.relevance_score * 100).toFixed(0));
 
 	$effect(() => {
 		if (isOpen && !duplicatesLoadAttempted && !isLoadingDuplicates) {
-			loadDuplicates();
+			void loadDuplicates();
 		}
 	});
 
+	function toMoscowDate(value: string): Date | null {
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) {
+			return null;
+		}
+
+		return new Date(date.getTime() + MOSCOW_OFFSET_MS);
+	}
+
+	function padTwo(value: number): string {
+		return String(value).padStart(2, '0');
+	}
+
 	function formatTime(value: string): string {
-		return timeFormatter.format(new Date(value));
+		const date = toMoscowDate(value);
+		if (!date) {
+			return '--:--';
+		}
+
+		return `${padTwo(date.getUTCHours())}:${padTwo(date.getUTCMinutes())}`;
 	}
 
 	function formatDateTime(value: string): string {
-		return dateTimeFormatter.format(new Date(value));
+		const date = toMoscowDate(value);
+		if (!date) {
+			return '--';
+		}
+
+		return `${padTwo(date.getUTCDate())}.${padTwo(date.getUTCMonth() + 1)}.${date.getUTCFullYear()} ${padTwo(date.getUTCHours())}:${padTwo(date.getUTCMinutes())}`;
 	}
 
 	async function loadDuplicates() {
+		if (!cluster.dedup_group_id) {
+			duplicates = [];
+			duplicatesLoadAttempted = true;
+			return;
+		}
+
 		isLoadingDuplicates = true;
 		duplicatesLoadAttempted = true;
+		duplicatesError = null;
 
 		try {
 			const searchParams = new URLSearchParams();
@@ -97,8 +111,10 @@
 			if (period) searchParams.set('period', period);
 			if (sentiment) searchParams.set('sentiment', sentiment);
 
-			const url = `${API_BASE_URL}/api/projects/${cluster.project_id}/mentions?${searchParams.toString()}`;
-			const response = await api.get<DuplicateMention[]>(url);
+			const response = await api.get<DuplicateMention[]>(
+				`/api/projects/${cluster.project_id}/mentions?${searchParams.toString()}`
+			);
+
 			if (response.error) {
 				throw new Error(response.error.message || 'Failed to fetch duplicates');
 			}
@@ -107,6 +123,9 @@
 				(item) => item.id !== cluster.representative_mention_id
 			);
 		} catch (error) {
+			duplicates = [];
+			duplicatesError =
+				error instanceof Error ? error.message : 'Не удалось загрузить похожие публикации';
 			console.error('Error fetching duplicates:', error);
 		} finally {
 			isLoadingDuplicates = false;
@@ -179,7 +198,7 @@
 				</Dialog.Trigger>
 				<Dialog.Content
 					class="max-h-[80vh] w-full overflow-y-auto sm:max-w-3xl"
-					onOpenAutoFocus={(e) => e.preventDefault()}
+					onOpenAutoFocus={(event) => event.preventDefault()}
 				>
 					<Dialog.Header>
 						<Dialog.Title class="text-2xl">{cluster.title || 'Публикация'}</Dialog.Title>
@@ -217,7 +236,7 @@
 							variant="ghost"
 							class="flex h-8 w-full justify-between p-0 text-muted-foreground hover:bg-transparent"
 						>
-							<span>Еще {cluster.mentions_count - 1} источника</span>
+							<span>Ещё {cluster.mentions_count - 1} источника</span>
 							<ChevronDown
 								size={16}
 								class="transition-transform duration-200 {isOpen ? 'rotate-180' : ''}"
@@ -232,10 +251,18 @@
 							<Loader2 class="h-5 w-5 animate-spin" />
 							<span class="ml-2 text-sm">Загрузка дублей...</span>
 						</div>
+					{:else if duplicatesError}
+						<div class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+							{duplicatesError}
+						</div>
+					{:else if duplicates.length === 0}
+						<div class="p-3 text-sm text-muted-foreground">
+							Похожие публикации не найдены.
+						</div>
 					{:else}
 						{#each duplicates as dup (dup.id)}
 							<div class="flex flex-col gap-1 border-l-2 border-muted pl-4">
-								<div class="flex items-center justify-between">
+								<div class="flex items-center justify-between gap-3">
 									<span class="text-sm font-medium">{dup.source_type}</span>
 									<span class="text-xs text-muted-foreground">
 										{formatTime(dup.published_at)}
