@@ -75,7 +75,7 @@
 					if (result.type === 'failure') {
 						toast.error('Ошибка при сохранении настроек');
 					} else if (result.type === 'success') {
-						toast.success('Настройки сохранены');
+						toast.success('Настройки сохранены. Изменения войдут через минуту.');
 
 						const actionData = (result as { data: { project?: ProjectData } }).data;
 						if (actionData?.project) {
@@ -125,9 +125,7 @@
 				<section class="rounded-lg border bg-card p-4">
 					<div class="flex flex-col gap-2">
 						<div class="flex items-center gap-4">
-							<label class="text-sm font-medium">
-								Автообновление ленты:
-							</label>
+							<label class="text-sm font-medium"> Автообновление ленты: </label>
 							<Slider
 								type="single"
 								bind:value={refreshInterval}
