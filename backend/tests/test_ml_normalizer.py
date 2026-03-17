@@ -38,6 +38,28 @@ class _ClusterMatchStore(_DedupFreeStore):
         ]
 
 
+class _MentionMatchStore(_DedupFreeStore):
+    def __init__(self) -> None:
+        self.ensure_calls: list[tuple[int, int]] = []
+
+    def find_similar_mentions(
+        self,
+        project_id: int,
+        embedding: list[float],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 555,
+                "dedup_group_id": None,
+                "distance": 0.19,
+            }
+        ]
+
+    def ensure_dedup_group_for_mention(self, project_id: int, mention_id: int) -> int:
+        self.ensure_calls.append((project_id, mention_id))
+        return 888
+
+
 class MLResultNormalizerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.normalizer = MLResultNormalizer(_DedupFreeStore())
@@ -260,6 +282,31 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["dedup_group_id"], 77)
         self.assertFalse(normalized[0]["is_primary"])
         self.assertEqual(normalized[0]["embedding"], [0.01] * 384)
+
+    def test_normalize_remote_results_creates_group_from_similar_primary_mention(self) -> None:
+        store = _MentionMatchStore()
+        normalizer = MLResultNormalizer(
+            store,
+            cluster_threshold=0.22,
+        )
+
+        normalized = normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "is_relevant": True,
+                    "relevance_score": 0.9,
+                    "sentiment": "neutral",
+                    "sentiment_score": 0.1,
+                    "embedding": [0.01] * 384,
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["dedup_group_id"], 888)
+        self.assertFalse(normalized[0]["is_primary"])
+        self.assertEqual(store.ensure_calls, [(100, 555)])
 
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(

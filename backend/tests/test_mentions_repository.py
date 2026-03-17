@@ -380,6 +380,55 @@ class MixedPersistMentionsCursor:
 
 
 class PersistMentionsRepositoryTests(unittest.TestCase):
+    def test_list_mentions_applies_dedup_group_filter_before_pagination(self) -> None:
+        rows = [
+            {
+                "id": 1,
+                "raw_post_id": 11,
+                "project_id": 3,
+                "relevance_score": 0.75,
+                "relevance_label": "relevant",
+                "sentiment_score": 0.65,
+                "sentiment_label": "negative",
+                "has_risk_words": True,
+                "dedup_group_id": 77,
+                "is_primary": False,
+                "resolved": False,
+                "processed_at": datetime.now(UTC),
+                "source_id": 9,
+                "source_type": "telegram",
+                "external_id": "x-1",
+                "url": "https://example.com/x-1",
+                "title": "Title",
+                "text": "Body",
+                "author": "author",
+                "published_at": datetime.now(UTC),
+                "collected_at": datetime.now(UTC),
+            }
+        ]
+        fake_cursor = FakeCursor(total=1, rows=rows)
+        store = BrandRadarPostgresStore(Settings())
+        store._connect = lambda *args, **kwargs: FakeConnection(fake_cursor)  # type: ignore[method-assign]
+
+        result = store.list_mentions(
+            3,
+            page=1,
+            page_size=25,
+            dedup_group_id=77,
+            relevant_only=True,
+            include_total=False,
+        )
+
+        self.assertEqual(result["items"], rows)
+        self.assertIsNone(result["total"])
+        self.assertEqual(len(fake_cursor.executed), 1)
+
+        data_query, data_params = fake_cursor.executed[0]
+        self.assertIn("m.relevance_label = 'relevant'", data_query)
+        self.assertIn("m.dedup_group_id = %s", data_query)
+        self.assertIn("ORDER BY rp.published_at DESC, rp.id DESC", data_query)
+        self.assertEqual(data_params, [3, 77, 25, 0])
+
     def test_vector_literal_accepts_pgvector_text_representation(self) -> None:
         store = BrandRadarPostgresStore(Settings())
 

@@ -108,6 +108,7 @@ class _ServiceStore:
             "pending": 4,
             "failed": 0,
         }
+        self.list_mentions_calls: list[dict] = []
 
     def get_project(self, project_id: int) -> dict:
         if project_id != 1:
@@ -159,6 +160,63 @@ class _ServiceStore:
             "is_primary": True,
             "resolved": resolved,
             "processed_at": datetime.now(UTC),
+        }
+
+    def list_mentions(
+        self,
+        project_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+        dedup_group_id: int | None = None,
+        primary_only: bool = False,
+        relevant_only: bool = False,
+        include_total: bool = True,
+    ) -> dict:
+        self.list_mentions_calls.append(
+            {
+                "project_id": project_id,
+                "page": page,
+                "page_size": page_size,
+                "confidence_threshold": confidence_threshold,
+                "published_after": published_after,
+                "sentiment_label": sentiment_label,
+                "dedup_group_id": dedup_group_id,
+                "primary_only": primary_only,
+                "relevant_only": relevant_only,
+                "include_total": include_total,
+            }
+        )
+        return {
+            "items": [
+                {
+                    "id": 77,
+                    "raw_post_id": 101,
+                    "project_id": project_id,
+                    "source_id": 10,
+                    "source_type": "rss",
+                    "external_id": "post-101",
+                    "url": "https://example.com/post-101",
+                    "title": "Brand update",
+                    "text": "brand update",
+                    "author": "Alice",
+                    "published_at": datetime.now(UTC),
+                    "collected_at": datetime.now(UTC),
+                    "relevance_score": 0.88,
+                    "relevance_label": "relevant",
+                    "sentiment_score": 0.12,
+                    "sentiment_label": "neutral",
+                    "has_risk_words": False,
+                    "dedup_group_id": dedup_group_id,
+                    "is_primary": False,
+                    "resolved": False,
+                    "processed_at": datetime.now(UTC),
+                }
+            ],
+            "total": 1,
         }
 
 
@@ -430,3 +488,37 @@ class BrandRadarServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["id"], 77)
         self.assertEqual(result["project_id"], 1)
         self.assertTrue(result["resolved"])
+
+    async def test_list_mentions_forwards_dedup_group_and_fast_flags(self) -> None:
+        store = _ServiceStore()
+        runtime = SimpleNamespace(postgres_store=store)
+        service = BrandRadarService(runtime)
+
+        result = await service.list_mentions(
+            1,
+            page=2,
+            page_size=25,
+            dedup_group_id=6,
+            relevant_only=True,
+            include_total=False,
+        )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["dedup_group_id"], 6)
+        self.assertEqual(
+            store.list_mentions_calls,
+            [
+                {
+                    "project_id": 1,
+                    "page": 2,
+                    "page_size": 25,
+                    "confidence_threshold": None,
+                    "published_after": None,
+                    "sentiment_label": None,
+                    "dedup_group_id": 6,
+                    "primary_only": False,
+                    "relevant_only": True,
+                    "include_total": False,
+                }
+            ],
+        )
