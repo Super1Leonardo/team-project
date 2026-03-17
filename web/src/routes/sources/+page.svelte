@@ -37,6 +37,7 @@
 	let submittingSourceId = $state<number | null>(null);
 	let statusOpen = $state(false);
 	let addModalOpen = $state(false);
+	let deletingSourceId = $state<number | null>(null);
 	let sourceType = $state<'telegram' | 'rss' | 'website'>('telegram');
 	let sourceConfig = $state('');
 	let pollInterval = $state(3600);
@@ -294,46 +295,107 @@
 												/>
 											</form>
 
-											<form
-												method="POST"
-												action="?/deleteSource"
-												id="delete-form-{source.id}"
-												class="hidden shrink-0 sm:block"
-												use:enhance={() => {
-													return async ({ result, update }) => {
-														if (result.type === 'failure') {
-															toast.error('Ошибка при удалении источника');
-														} else if (result.type === 'success') {
-															toast.success('Источник удалён');
-														}
-														await update();
-													};
-												}}
-											>
-												<input type="hidden" name="source_id" value={source.id} />
-												<input type="hidden" name="project_id" value={project?.id} />
+											<Dialog.Root open={deletingSourceId === source.id} onOpenChange={(open) => {
+												if (!open) deletingSourceId = null;
+											}}>
 												<Button
 													type="button"
 													variant="ghost"
 													size="icon"
-													class="text-muted-foreground hover:text-destructive"
+													class="hidden shrink-0 text-muted-foreground hover:text-destructive sm:inline-flex"
 													onclick={() => {
-														if (confirm(`Удалить источник "${getSourceDisplayConfig(source)}"?`)) {
-															const form = document.getElementById(
-																`delete-form-${source.id}`
-															) as HTMLFormElement | null;
-															form?.requestSubmit();
-														}
+														deletingSourceId = source.id;
 													}}
 												>
 													<Trash2 class="h-4 w-4" />
 												</Button>
-											</form>
+												<Dialog.Content>
+													<Dialog.Header>
+														<Dialog.Title>Удалить источник</Dialog.Title>
+														<Dialog.Description>
+															Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(source)}"? Это действие нельзя отменить.
+														</Dialog.Description>
+													</Dialog.Header>
+													<form
+														method="POST"
+														action="?/deleteSource"
+														use:enhance={() => {
+															deletingSourceId = null;
+															return async ({ result, update }) => {
+																if (result.type === 'failure') {
+																	toast.error('Ошибка при удалении источника');
+																} else if (result.type === 'success') {
+																	toast.success('Источник удалён');
+																}
+																await update();
+															};
+														}}
+													>
+														<input type="hidden" name="source_id" value={source.id} />
+														<input type="hidden" name="project_id" value={project?.id} />
+														<Dialog.Footer>
+															<Button type="button" variant="outline" onclick={() => deletingSourceId = null}>
+																Отмена
+															</Button>
+															<Button type="submit" variant="destructive">
+																Удалить
+															</Button>
+														</Dialog.Footer>
+													</form>
+												</Dialog.Content>
+											</Dialog.Root>
 										</div>
 
 										<span class="text-sm sm:hidden {getStatusColor(status)} truncate">
 											• {getStatusText(status)}
 										</span>
+
+										<Dialog.Root open={deletingSourceId === source.id} onOpenChange={(open) => {
+											if (!open) deletingSourceId = null;
+										}}>
+											<button
+												class="sm:hidden text-muted-foreground hover:text-destructive"
+												onclick={() => {
+													deletingSourceId = source.id;
+												}}
+											>
+												<Trash2 class="h-4 w-4" />
+											</button>
+											<Dialog.Content>
+												<Dialog.Header>
+													<Dialog.Title>Удалить источник</Dialog.Title>
+													<Dialog.Description>
+														Вы уверены, что хотите удалить источник "{getSourceDisplayConfig(source)}"? Это действие нельзя отменить.
+													</Dialog.Description>
+												</Dialog.Header>
+												<form
+													method="POST"
+													action="?/deleteSource"
+													use:enhance={() => {
+														deletingSourceId = null;
+														return async ({ result, update }) => {
+															if (result.type === 'failure') {
+																toast.error('Ошибка при удалении источника');
+															} else if (result.type === 'success') {
+																toast.success('Источник удалён');
+															}
+															await update();
+														};
+													}}
+												>
+													<input type="hidden" name="source_id" value={source.id} />
+													<input type="hidden" name="project_id" value={project?.id} />
+													<Dialog.Footer>
+														<Button type="button" variant="outline" onclick={() => deletingSourceId = null}>
+															Отмена
+														</Button>
+														<Button type="submit" variant="destructive">
+															Удалить
+														</Button>
+													</Dialog.Footer>
+												</form>
+											</Dialog.Content>
+										</Dialog.Root>
 									</div>
 
 									<div class="hidden flex-col gap-1 text-sm text-muted-foreground sm:flex">
