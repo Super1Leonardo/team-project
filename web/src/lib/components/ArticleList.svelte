@@ -4,6 +4,7 @@
 		source: string;
 		publishedAt: string;
 		title: string;
+		text: string;
 		mlScore: number;
 	}
 
