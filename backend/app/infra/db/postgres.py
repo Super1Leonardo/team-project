@@ -1814,7 +1814,7 @@ class BrandRadarPostgresStore:
                 """,
                 [*params, page_size, offset],
             )
-            rows = [dict(row) for row in cur.fetchall()]
+            rows = cur.fetchall()
 
             total: int | None = None
             if include_total:
@@ -1831,118 +1831,10 @@ class BrandRadarPostgresStore:
                 total_row = cur.fetchone()
                 total = int(total_row["total"]) if total_row is not None else 0
 
-            self._attach_dedup_duplicates(
-                cur,
-                project_id=project_id,
-                mention_rows=rows,
-                confidence_threshold=confidence_threshold,
-                published_after=published_after,
-                sentiment_label=sentiment_label,
-                relevant_only=relevant_only,
-            )
-
         return {
-            "items": rows,
+            "items": [dict(row) for row in rows],
             "total": total,
         }
-
-    def _attach_dedup_duplicates(
-        self,
-        cur: psycopg.Cursor,
-        *,
-        project_id: int,
-        mention_rows: list[dict[str, Any]],
-        confidence_threshold: float | None = None,
-        published_after: datetime | None = None,
-        sentiment_label: str | None = None,
-        relevant_only: bool = False,
-    ) -> None:
-        if not mention_rows:
-            return
-
-        group_ids = sorted(
-            {
-                int(row["dedup_group_id"])
-                for row in mention_rows
-                if row.get("dedup_group_id") is not None
-            }
-        )
-        if not group_ids:
-            return
-
-        conditions = [
-            "m.project_id = %s",
-            "m.dedup_group_id = ANY(%s)",
-        ]
-        params: list[Any] = [project_id, group_ids]
-
-        if relevant_only:
-            conditions.append("m.relevance_label = 'relevant'")
-
-        if confidence_threshold is not None:
-            conditions.append("m.relevance_score >= %s")
-            params.append(confidence_threshold)
-
-        if published_after is not None:
-            conditions.append("rp.published_at >= %s")
-            params.append(published_after)
-
-        if sentiment_label is not None:
-            conditions.append("m.sentiment_label = %s")
-            params.append(sentiment_label)
-
-        where_clause = " AND ".join(conditions)
-        cur.execute(
-            f"""
-            SELECT
-                m.id,
-                m.raw_post_id,
-                m.project_id,
-                m.relevance_score,
-                m.relevance_label,
-                m.sentiment_score,
-                m.sentiment_label,
-                m.has_risk_words,
-                m.dedup_group_id,
-                m.is_primary,
-                m.resolved,
-                m.processed_at,
-                rp.source_id,
-                s.source_type,
-                rp.external_id,
-                rp.url,
-                rp.title,
-                rp.text,
-                rp.author,
-                rp.published_at,
-                rp.collected_at
-            FROM mentions m
-            JOIN raw_posts rp ON rp.id = m.raw_post_id
-            JOIN sources s ON s.id = rp.source_id
-            WHERE {where_clause}
-            ORDER BY m.dedup_group_id ASC, rp.published_at DESC, rp.id DESC
-            """,
-            params,
-        )
-        duplicate_rows = [dict(row) for row in cur.fetchall()]
-        duplicates_by_group: dict[int, list[dict[str, Any]]] = {}
-        for row in duplicate_rows:
-            group_id = row.get("dedup_group_id")
-            if group_id is None:
-                continue
-            duplicates_by_group.setdefault(int(group_id), []).append(row)
-
-        for mention_row in mention_rows:
-            group_id = mention_row.get("dedup_group_id")
-            if group_id is None:
-                continue
-
-            duplicates = [
-                duplicate
-                for duplicate in duplicates_by_group.get(int(group_id), [])
-                if int(duplicate["id"]) != int(mention_row["id"])
-            ]
-            mention_row["dedup"] = {"duplicates": duplicates}
 
     def update_mention_resolved(
         self,

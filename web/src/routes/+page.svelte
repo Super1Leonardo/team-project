@@ -14,7 +14,7 @@
 		raw_post_id: number;
 		project_id: number;
 		source_id: number;
-		source_type: 'telegram' | 'vk' | 'dzen' | 'rss' | 'website';
+		source_type: 'telegram' | 'vk' | 'dzen' | 'rss';
 		source_name?: string;
 		url: string | null;
 		title: string | null;
@@ -29,16 +29,7 @@
 		risk_words?: string[];
 		dedup_group_id: number | null;
 		is_primary: boolean;
-		dedup?: {
-			duplicates: Array<{
-				id: number;
-				source_type: 'telegram' | 'vk' | 'dzen' | 'rss' | 'website';
-				title: string | null;
-				text: string;
-				published_at: string;
-				relevance_score: number;
-			}>;
-		};
+		dedup?: { duplicates: any[] };
 	}
 
 	let { data }: { data: PageData } = $props();
@@ -66,14 +57,7 @@
 			hasRiskWords: m.has_risk_words,
 			text: m.text,
 			url: m.url,
-			duplicates:
-				m.dedup?.duplicates.map((duplicate) => ({
-					source: duplicate.source_type,
-					publishedAt: duplicate.published_at,
-					title: duplicate.title || '',
-					text: duplicate.text,
-					mlScore: duplicate.relevance_score
-				})) || []
+			duplicates: m.dedup?.duplicates || []
 		}))
 	);
 

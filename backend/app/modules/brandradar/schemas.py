@@ -196,32 +196,6 @@ class RawPostResponse(BaseModel):
     ml_processed: bool
 
 
-class MentionDuplicateResponse(BaseModel):
-    id: int
-    raw_post_id: int
-    project_id: int
-    source_id: int
-    source_type: SourceType
-    external_id: str
-    url: str | None = None
-    title: str | None = None
-    text: str
-    author: str | None = None
-    published_at: datetime
-    collected_at: datetime
-    relevance_score: float
-    relevance_label: RelevanceLabel
-    sentiment_score: float
-    sentiment_label: SentimentLabel
-    has_risk_words: bool
-    resolved: bool
-    processed_at: datetime
-
-
-class MentionDedupResponse(BaseModel):
-    duplicates: list[MentionDuplicateResponse] = Field(default_factory=list)
-
-
 class MentionResponse(BaseModel):
     id: int
     raw_post_id: int
@@ -241,7 +215,6 @@ class MentionResponse(BaseModel):
     sentiment_label: SentimentLabel
     has_risk_words: bool
     dedup_group_id: int | None = None
-    dedup: MentionDedupResponse | None = None
     is_primary: bool
     resolved: bool
     processed_at: datetime
