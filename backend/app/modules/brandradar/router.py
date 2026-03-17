@@ -495,6 +495,7 @@ async def list_mentions(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    dedup_group_id: int | None = Query(default=None, ge=1),
     primary_only: bool = Query(default=False),
     relevant_only: bool = Query(default=False),
     include_total: bool = Query(default=True),
@@ -508,6 +509,7 @@ async def list_mentions(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        dedup_group_id=dedup_group_id,
         primary_only=primary_only,
         relevant_only=relevant_only,
         include_total=include_total,
@@ -569,6 +571,35 @@ async def list_default_feed(
     return _envelope(
         mentions_page["items"],
         total=mentions_page["total"] if include_total else None,
+        page=page,
+        page_size=effective_page_size,
+    )
+
+
+@router.get(
+    "/feed/clusters",
+    response_model=ApiEnvelope[list[MentionClusterResponse]],
+)
+async def list_default_cluster_feed(
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    confidence: MentionConfidenceThreshold | None = Query(default=None),
+    period: MentionPeriod | None = Query(default=None),
+    sentiment: MentionSentiment | None = Query(default=None),
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    effective_page_size = page_size or limit or 100
+    clusters_page = await service.list_default_clusters(
+        page=page,
+        page_size=effective_page_size,
+        confidence_threshold=confidence.threshold if confidence else None,
+        published_after=(datetime.now(UTC) - period.delta) if period else None,
+        sentiment_label=sentiment.value if sentiment else None,
+    )
+    return _envelope(
+        clusters_page["items"],
+        total=clusters_page["total"],
         page=page,
         page_size=effective_page_size,
     )

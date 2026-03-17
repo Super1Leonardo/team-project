@@ -21,6 +21,7 @@
 	import * as Tooltip from '$lib/components/ui/shadcn/tooltip';
 	import * as Dialog from '$lib/components/ui/shadcn/dialog';
 	import { ChevronDown, ExternalLink, Loader2 } from '@lucide/svelte';
+	import { page as pageState } from '$app/state';
 	import { tSentiment, type SentimentLabel } from '$lib/utils';
 
 	// Принимаем MentionClusterResponse из API
@@ -57,7 +58,22 @@
 			// Вызываем общий эндпоинт ленты, выключая primary_only,
 			// чтобы достать все посты этой дедуп-группы
 			// TODO: В openapi нужно добавить параметр dedup_group_id в query для GET /mentions
-			const url = `/api/projects/${cluster.project_id}/mentions?primary_only=false&limit=100&dedup_group_id=${cluster.dedup_group_id}`;
+			const searchParams = new URLSearchParams();
+			searchParams.set('primary_only', 'false');
+			searchParams.set('relevant_only', 'true');
+			searchParams.set('include_total', 'false');
+			searchParams.set('limit', '100');
+			searchParams.set('dedup_group_id', String(cluster.dedup_group_id));
+
+			const confidence = pageState.url.searchParams.get('confidence');
+			const period = pageState.url.searchParams.get('period');
+			const sentiment = pageState.url.searchParams.get('sentiment');
+
+			if (confidence) searchParams.set('confidence', confidence);
+			if (period) searchParams.set('period', period);
+			if (sentiment) searchParams.set('sentiment', sentiment);
+
+			const url = `/api/projects/${cluster.project_id}/mentions?${searchParams.toString()}`;
 			const res = await fetch(url);
 			if (!res.ok) throw new Error('Failed to fetch duplicates');
 

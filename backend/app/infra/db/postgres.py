@@ -1751,6 +1751,7 @@ class BrandRadarPostgresStore:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        dedup_group_id: int | None = None,
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
@@ -1775,6 +1776,10 @@ class BrandRadarPostgresStore:
         if sentiment_label is not None:
             conditions.append("m.sentiment_label = %s")
             params.append(sentiment_label)
+
+        if dedup_group_id is not None:
+            conditions.append("m.dedup_group_id = %s")
+            params.append(dedup_group_id)
 
         where_clause = " AND ".join(conditions)
         offset = (page - 1) * page_size

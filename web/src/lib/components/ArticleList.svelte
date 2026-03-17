@@ -1,24 +1,7 @@
 <script lang="ts" module>
-	// Типы данных (взяты из твоего +page.svelte)
-	export interface Duplicate {
-		source: string;
-		publishedAt: string;
-		title: string;
-		mlScore: number;
-	}
+	import type { MentionCluster } from '$lib/types/brandradar';
 
-	export interface Cluster {
-		id: string;
-		title: string;
-		source: string;
-		publishedAt: string;
-		sentiment: 'positive' | 'negative' | 'neutral';
-		mlScore: number;
-		hasRiskWords: boolean;
-		text: string;
-		url: string | null;
-		duplicates: Duplicate[];
-	}
+	export type Cluster = MentionCluster;
 </script>
 
 <script lang="ts">
@@ -29,11 +12,11 @@
 
 <div class="flex flex-col gap-4">
 	{#if clusters.length === 0}
-		<div class="rounded-lg border bg-card py-8 px-2 text-center text-muted-foreground">
+		<div class="rounded-lg border bg-card px-2 py-8 text-center text-muted-foreground">
 			Нет данных для отображения по выбранным фильтрам
 		</div>
 	{:else}
-		{#each clusters as clusterData (clusterData.id)}
+		{#each clusters as clusterData (clusterData.cluster_id)}
 			<Article cluster={clusterData} />
 		{/each}
 	{/if}

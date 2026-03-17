@@ -327,6 +327,7 @@ class BrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        dedup_group_id: int | None = None,
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
@@ -340,6 +341,7 @@ class BrandRadarService:
             confidence_threshold=confidence_threshold,
             published_after=published_after,
             sentiment_label=sentiment_label,
+            dedup_group_id=dedup_group_id,
             primary_only=primary_only,
             relevant_only=relevant_only,
             include_total=include_total,
@@ -387,6 +389,30 @@ class BrandRadarService:
         )
         return {
             **mentions_page,
+            "project": project,
+        }
+
+    async def list_default_clusters(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+    ) -> dict[str, Any]:
+        project = await asyncio.to_thread(self.runtime.postgres_store.get_preferred_project)
+        clusters_page = await asyncio.to_thread(
+            self.runtime.postgres_store.list_clusters,
+            int(project["id"]),
+            page=page,
+            page_size=page_size,
+            confidence_threshold=confidence_threshold,
+            published_after=published_after,
+            sentiment_label=sentiment_label,
+        )
+        return {
+            **clusters_page,
             "project": project,
         }
 
