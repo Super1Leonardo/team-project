@@ -7,7 +7,7 @@ test.describe('cluster card', () => {
 		await expect(page.getByRole('heading', { name: 'E2E Cluster Fixture' })).toBeVisible();
 		await expect(page.getByText('Тестовый кластер')).toBeVisible();
 
-		await page.getByRole('button', { name: /читать далее/i }).click();
+		await page.getByRole('button', { name: /читать далее/i }).last().click();
 
 		await expect(page.getByRole('dialog')).toBeVisible();
 		await expect(page.getByText('Демо-карточка для e2e-проверки загрузки дублей.')).toBeVisible();
@@ -83,7 +83,7 @@ test.describe('cluster card', () => {
 		await page.route('**/api/projects/2/mentions?**', async (route) => {
 			requestCount += 1;
 			await route.fulfill({
-				status: 502,
+				status: 400,
 				contentType: 'application/json',
 				body: JSON.stringify({ detail: 'backend unavailable' })
 			});
