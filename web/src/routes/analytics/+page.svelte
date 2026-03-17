@@ -21,7 +21,7 @@
 	<div class="flex w-full flex-col items-center">
 		<Heading>Аналитика репутации</Heading>
 
-		<FilterBar health={data.health} />
+		<FilterBar health={data.health} hiddenFilters={['sentiment', 'riskWordsOnly']} />
 	</div>
 
 	{#if hasError}

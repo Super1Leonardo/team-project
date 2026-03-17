@@ -9,9 +9,11 @@
 		clickhouse?: string;
 	};
 
-	let { health }: { health?: HealthData | null } = $props();
+	let { health, hiddenFilters = [] }: { health?: HealthData | null; hiddenFilters?: string[] } = $props();
 
 	const isClickHouseDown = $derived(health?.clickhouse === 'unhealthy');
+	const showSentiment = $derived(!hiddenFilters.includes('sentiment'));
+	const showRiskWords = $derived(!hiddenFilters.includes('riskWordsOnly'));
 
 	const DEFAULTS = {
 		confidence: '0.7',
@@ -79,28 +81,30 @@
 	<div
 		class="flex w-full flex-wrap items-end gap-3 rounded-lg border bg-card p-3 sm:w-fit sm:gap-4 sm:p-4"
 	>
-		<div class="flex min-w-35 flex-col gap-1.5">
-			<span class="text-xs font-medium text-muted-foreground">Тональность</span>
-			<Select.Root
-				type="single"
-				value={$sentiment || ''}
-				onValueChange={(v) => {
-					const val = v === '' ? null : v;
-					sentiment.set(val);
-					updateFilter('sentiment', val);
-				}}
-			>
-				<Select.Trigger class="w-full [&>span]:truncate">
-					{getSentimentLabel($sentiment)}
-				</Select.Trigger>
-				<Select.Content>
-					<Select.Item value="">Все тональности</Select.Item>
-					<Select.Item value="positive">Позитивные</Select.Item>
-					<Select.Item value="neutral">Нейтральные</Select.Item>
-					<Select.Item value="negative">Негативные</Select.Item>
-				</Select.Content>
-			</Select.Root>
-		</div>
+		{#if showSentiment}
+			<div class="flex min-w-35 flex-col gap-1.5">
+				<span class="text-xs font-medium text-muted-foreground">Тональность</span>
+				<Select.Root
+					type="single"
+					value={$sentiment || ''}
+					onValueChange={(v) => {
+						const val = v === '' ? null : v;
+						sentiment.set(val);
+						updateFilter('sentiment', val);
+					}}
+				>
+					<Select.Trigger class="w-full [&>span]:truncate">
+						{getSentimentLabel($sentiment)}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="">Все тональности</Select.Item>
+						<Select.Item value="positive">Позитивные</Select.Item>
+						<Select.Item value="neutral">Нейтральные</Select.Item>
+						<Select.Item value="negative">Негативные</Select.Item>
+					</Select.Content>
+				</Select.Root>
+			</div>
+		{/if}
 
 		<div class="flex min-w-[120px] flex-1 flex-col gap-1.5 sm:max-w-[140px]">
 			<span class="text-xs font-medium text-muted-foreground">Уверенность ML</span>
@@ -144,14 +148,16 @@
 			</Select.Root>
 		</div>
 
-		<div class="flex items-center gap-2 mb-2">
-			<Checkbox.Root
-				checked={$riskWordsOnly}
-				onCheckedChange={(checked) => updateRiskWordsFilter(checked === true)}
-			/>
-			<button onclick={() => updateRiskWordsFilter(!$riskWordsOnly)} class="text-sm cursor-pointer">
-				Только рисковые
-			</button>
-		</div>
+		{#if showRiskWords}
+			<div class="flex items-center gap-2 mb-2">
+				<Checkbox.Root
+					checked={$riskWordsOnly}
+					onCheckedChange={(checked) => updateRiskWordsFilter(checked === true)}
+				/>
+				<button onclick={() => updateRiskWordsFilter(!$riskWordsOnly)} class="text-sm cursor-pointer">
+					Только рисковые
+				</button>
+			</div>
+		{/if}
 	</div>
 {/if}
