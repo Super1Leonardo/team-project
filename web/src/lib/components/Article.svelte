@@ -260,7 +260,7 @@
 					{:else if duplicates.length === 0}
 						<div class="p-3 text-sm text-muted-foreground">Похожие публикации не найдены.</div>
 					{:else}
-						<ul class="max-h-30 mb-2 overflow-auto">
+						<ul class="max-h-80 mb-2 overflow-auto">
 							{#each duplicates as dup (dup.id)}
 								<li class="flex flex-col gap-1 border-l-2 border-muted pl-4">
 									<div class="flex items-center justify-between gap-3">
