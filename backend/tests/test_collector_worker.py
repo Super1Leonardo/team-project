@@ -31,6 +31,9 @@ class _CollectorWorkerStore:
         self.saved_calls: list[tuple[int, int]] = []
         self.error_calls: list[tuple[int, str]] = []
 
+    def list_due_sources(self) -> list[dict[str, object]]:
+        return [{"id": 11, "source_type": "rss"}]
+
     def save_raw_posts(self, source: dict[str, object], posts: list[object]) -> int:
         self.saved_calls.append((int(source["id"]), len(posts)))
         return len(posts)
@@ -87,6 +90,22 @@ class CollectorWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(published_after)
         self.assertLessEqual(before, published_after)
         self.assertLessEqual(published_after, after)
+
+    async def test_run_once_uses_due_sources(self) -> None:
+        collector = _RecordingCollector()
+        store = _CollectorWorkerStore()
+        worker = CollectorWorker(
+            store=store,
+            collectors={"rss": collector},
+            lookback_days=30,
+        )
+
+        result = await worker.run_once()
+
+        self.assertEqual(result["sources_checked"], 1)
+        self.assertEqual(result["sources_processed"], 1)
+        self.assertEqual(result["posts_saved"], 0)
+        self.assertEqual(store.saved_calls, [(11, 0)])
 
     async def test_run_sources_accepts_custom_lookback_days(self) -> None:
         collector = _RecordingCollector()

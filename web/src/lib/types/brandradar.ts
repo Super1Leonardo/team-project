@@ -116,6 +116,34 @@ export interface Mention {
 	has_risk_words: boolean;
 	dedup_group_id?: number | null;
 	is_primary: boolean;
+	resolved: boolean;
+	processed_at: string;
+}
+
+export interface MentionCluster {
+	cluster_id: number;
+	dedup_group_id?: number | null;
+	mentions_count: number;
+	first_seen_at: string;
+	last_seen_at: string;
+	representative_mention_id: number;
+	raw_post_id: number;
+	project_id: number;
+	source_id: number;
+	source_type: SourceType;
+	external_id: string;
+	url?: string | null;
+	title?: string | null;
+	text: string;
+	author?: string | null;
+	published_at: string;
+	collected_at: string;
+	relevance_score: number;
+	relevance_label: RelevanceLabel;
+	sentiment_score: number;
+	sentiment_label: SentimentLabel;
+	has_risk_words: boolean;
+	resolved?: boolean;
 	processed_at: string;
 }
 

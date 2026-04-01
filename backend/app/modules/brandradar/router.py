@@ -18,6 +18,7 @@ from backend.app.modules.brandradar.schemas import (
     MentionResponse,
     MentionConfidenceThreshold,
     MentionPeriod,
+    MentionResolvedUpdateRequest,
     MentionSentiment,
     ProjectCreateRequest,
     ProjectResponse,
@@ -58,6 +59,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 1,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=12),
         },
         {
@@ -80,6 +82,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 2,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=36),
         },
         {
@@ -102,6 +105,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 3,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=48),
         },
         {
@@ -124,6 +128,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 4,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=60),
         },
         {
@@ -146,6 +151,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 5,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=72),
         },
         {
@@ -168,6 +174,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 6,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=84),
         },
         {
@@ -190,6 +197,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 7,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=3),
         },
         {
@@ -212,6 +220,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 8,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=8),
         },
         {
@@ -234,6 +243,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": False,
             "dedup_group_id": 9,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=10),
         },
         {
@@ -256,6 +266,7 @@ def _get_mock_mentions(project_id: int, limit: int = 100) -> list[dict]:
             "has_risk_words": True,
             "dedup_group_id": 10,
             "is_primary": True,
+            "resolved": False,
             "processed_at": now - timedelta(hours=20),
         },
     ]
@@ -484,9 +495,11 @@ async def list_mentions(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    dedup_group_id: int | None = Query(default=None, ge=1),
     primary_only: bool = Query(default=False),
     relevant_only: bool = Query(default=False),
     include_total: bool = Query(default=True),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -497,15 +510,36 @@ async def list_mentions(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        dedup_group_id=dedup_group_id,
         primary_only=primary_only,
         relevant_only=relevant_only,
         include_total=include_total,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         mentions_page["items"],
         total=mentions_page["total"] if include_total else None,
         page=page,
         page_size=effective_page_size,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/mentions/{mention_id}/resolved",
+    response_model=ApiEnvelope[MentionResponse],
+)
+async def update_mention_resolved(
+    project_id: int,
+    mention_id: int,
+    payload: MentionResolvedUpdateRequest,
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    return _envelope(
+        await service.update_mention_resolved(
+            project_id,
+            mention_id,
+            resolved=payload.resolved,
+        )
     )
 
 
@@ -523,6 +557,7 @@ async def list_default_feed(
     primary_only: bool = Query(default=True),
     relevant_only: bool = Query(default=True),
     include_total: bool = Query(default=False),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -535,10 +570,42 @@ async def list_default_feed(
         primary_only=primary_only,
         relevant_only=relevant_only,
         include_total=include_total,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         mentions_page["items"],
         total=mentions_page["total"] if include_total else None,
+        page=page,
+        page_size=effective_page_size,
+    )
+
+
+@router.get(
+    "/feed/clusters",
+    response_model=ApiEnvelope[list[MentionClusterResponse]],
+)
+async def list_default_cluster_feed(
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    confidence: MentionConfidenceThreshold | None = Query(default=None),
+    period: MentionPeriod | None = Query(default=None),
+    sentiment: MentionSentiment | None = Query(default=None),
+    risk_words_only: bool = Query(default=False),
+    service: BrandRadarService = Depends(get_brandradar_service),
+):
+    effective_page_size = page_size or limit or 100
+    clusters_page = await service.list_default_clusters(
+        page=page,
+        page_size=effective_page_size,
+        confidence_threshold=confidence.threshold if confidence else None,
+        published_after=(datetime.now(UTC) - period.delta) if period else None,
+        sentiment_label=sentiment.value if sentiment else None,
+        risk_words_only=risk_words_only,
+    )
+    return _envelope(
+        clusters_page["items"],
+        total=clusters_page["total"],
         page=page,
         page_size=effective_page_size,
     )
@@ -556,6 +623,7 @@ async def list_clusters(
     confidence: MentionConfidenceThreshold | None = Query(default=None),
     period: MentionPeriod | None = Query(default=None),
     sentiment: MentionSentiment | None = Query(default=None),
+    risk_words_only: bool = Query(default=False),
     service: BrandRadarService = Depends(get_brandradar_service),
 ):
     effective_page_size = page_size or limit or 100
@@ -566,6 +634,7 @@ async def list_clusters(
         confidence_threshold=confidence.threshold if confidence else None,
         published_after=(datetime.now(UTC) - period.delta) if period else None,
         sentiment_label=sentiment.value if sentiment else None,
+        risk_words_only=risk_words_only,
     )
     return _envelope(
         clusters_page["items"],

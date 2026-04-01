@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from backend.app.core.exceptions import ExternalMLResponseError
@@ -98,13 +100,14 @@ class MLResultNormalizer:
                 remote_item=result,
                 index=index,
             )
+            searchable_text = self._build_searchable_text(queue_item)
             sentiment_label = self._normalize_sentiment_label(result)
             has_keyword_match = self._matches_keywords(
-                queue_item["text"],
+                searchable_text,
                 queue_item["keywords"],
             )
             has_excluded_match = self._contains_any(
-                queue_item["text"],
+                searchable_text,
                 queue_item["exclude_keywords"],
             )
             relevance_label = self._normalize_relevance_label(result)
@@ -122,10 +125,12 @@ class MLResultNormalizer:
                 default=0.0,
             )
             has_risk_words = self._contains_any(
-                queue_item["text"],
+                searchable_text,
                 queue_item["risk_words"],
             )
-            embedding = self._normalize_embedding(result.get("embedding"))
+            embedding = self._normalize_embedding(
+                self._extract_embedding_payload(result)
+            )
             dedup_group_id, is_primary = self._assign_dedup(
                 project_id=int(queue_item["project_id"]),
                 relevance_label=relevance_label,
@@ -178,7 +183,7 @@ class MLResultNormalizer:
                 "sentiment_score": 0.0,
                 "sentiment_label": "neutral",
                 "has_risk_words": self._contains_any(
-                    item["text"],
+                    self._build_searchable_text(item),
                     item["risk_words"],
                 ),
                 "embedding": None,
@@ -372,6 +377,18 @@ class MLResultNormalizer:
         )
 
     @staticmethod
+    def _extract_embedding_payload(payload: dict[str, Any]) -> Any:
+        embedding = payload.get("embedding")
+        if embedding is not None:
+            return embedding
+
+        cluster = payload.get("cluster")
+        if isinstance(cluster, dict):
+            return cluster.get("embedding")
+
+        return None
+
+    @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:
         if value is None or isinstance(value, datetime):
             return value
@@ -384,8 +401,12 @@ class MLResultNormalizer:
 
     @staticmethod
     def _contains_any(text: str, words: list[str]) -> bool:
-        normalized = " ".join(text.casefold().split())
-        return any(" ".join(word.casefold().split()) in normalized for word in words)
+        normalized_text = MLResultNormalizer._normalize_text(text)
+        for word in words:
+            pattern = MLResultNormalizer._compile_keyword_pattern(word)
+            if pattern is not None and pattern.search(normalized_text):
+                return True
+        return False
 
     @classmethod
     def _matches_keywords(cls, text: str, keywords: list[str]) -> bool:
@@ -395,12 +416,41 @@ class MLResultNormalizer:
 
     @classmethod
     def _should_send_to_ml(cls, queue_item: dict[str, Any]) -> bool:
+        searchable_text = cls._build_searchable_text(queue_item)
         has_keyword_match = cls._matches_keywords(
-            queue_item["text"],
+            searchable_text,
             queue_item["keywords"],
         )
         has_excluded_match = cls._contains_any(
-            queue_item["text"],
+            searchable_text,
             queue_item["exclude_keywords"],
         )
         return has_keyword_match and not has_excluded_match
+
+    @staticmethod
+    def _build_searchable_text(queue_item: dict[str, Any]) -> str:
+        title = str(queue_item.get("title") or "").strip()
+        text = str(queue_item.get("text") or "").strip()
+        if title and text:
+            return f"{title}\n{text}"
+        return title or text
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return " ".join(value.casefold().split())
+
+    @staticmethod
+    def _is_word_char(value: str) -> bool:
+        return value.isalnum() or value == "_"
+
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _compile_keyword_pattern(word: str) -> re.Pattern[str] | None:
+        normalized_word = MLResultNormalizer._normalize_text(word)
+        if not normalized_word:
+            return None
+
+        escaped = re.escape(normalized_word).replace(r"\ ", r"\s+")
+        prefix = r"(?<!\w)" if MLResultNormalizer._is_word_char(normalized_word[0]) else ""
+        suffix = r"(?!\w)" if MLResultNormalizer._is_word_char(normalized_word[-1]) else ""
+        return re.compile(prefix + escaped + suffix)

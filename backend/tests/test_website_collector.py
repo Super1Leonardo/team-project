@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from backend.app.collectors.website import WebsiteCollector
+from backend.app.collectors.website import BeautifulSoup, WebsiteCollector
 from backend.app.core.exceptions import DomainValidationError
 
 
@@ -86,6 +86,7 @@ class _FakeWebsiteAsyncClient:
         return _FakeWebsiteResponse(body)
 
 
+@unittest.skipIf(BeautifulSoup is None, "beautifulsoup4 is not installed in the test environment")
 class WebsiteCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_collect_parses_articles_and_filters_by_published_after(self) -> None:
         async def fake_fetcher(url: str) -> str:

@@ -216,7 +216,12 @@ class MentionResponse(BaseModel):
     has_risk_words: bool
     dedup_group_id: int | None = None
     is_primary: bool
+    resolved: bool
     processed_at: datetime
+
+
+class MentionResolvedUpdateRequest(BaseModel):
+    resolved: bool
 
 
 class MentionClusterResponse(BaseModel):
@@ -242,6 +247,7 @@ class MentionClusterResponse(BaseModel):
     sentiment_score: float
     sentiment_label: SentimentLabel
     has_risk_words: bool
+    resolved: bool = False
     processed_at: datetime
 
 

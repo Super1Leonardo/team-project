@@ -11,11 +11,54 @@ default:
 variables:
   GIT_STRATEGY: fetch
   REMOTE_APP_UP_CMD: docker compose up -d --build --remove-orphans
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.cache/npm"
 
-test:
+backend_tests:
   stage: test
+  image: python:3.12
+  cache:
+    key: backend-pip-cache
+    paths:
+      - .cache/pip
+  before_script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -r requirements.txt pytest coverage
   script:
-    - echo "ok"
+    - python -m coverage run -m pytest backend/tests --junitxml=backend-junit.xml -q
+    - python -m coverage report --include="backend/app/*"
+    - python -m coverage xml -o backend-coverage.xml --include="backend/app/*"
+  coverage: '/TOTAL.+?(\d+(?:\.\d+)?%)$/'
+  artifacts:
+    when: always
+    reports:
+      junit: backend-junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: backend-coverage.xml
+    paths:
+      - backend-junit.xml
+      - backend-coverage.xml
+
+frontend_e2e:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.58.2-jammy
+  cache:
+    key: frontend-npm-cache
+    paths:
+      - .cache/npm
+  script:
+    - cd web
+    - npm install
+    - PLAYWRIGHT_JUNIT_OUTPUT_NAME=playwright-junit.xml npx playwright test --reporter=line,junit --output=test-results
+  artifacts:
+    when: always
+    reports:
+      junit: web/playwright-junit.xml
+    paths:
+      - web/playwright-junit.xml
+      - web/test-results
+      - web/playwright-report
 
 .deploy_template:
   stage: deploy

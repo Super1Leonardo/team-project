@@ -10,8 +10,15 @@ export interface ApiError {
 	code?: string;
 }
 
+export interface ApiResponseMeta {
+	total?: number;
+	page?: number;
+	page_size?: number;
+}
+
 export interface ApiResponse<T> {
 	data?: T;
+	meta?: ApiResponseMeta;
 	error?: ApiError;
 }
 
@@ -93,11 +100,22 @@ export async function fetchApi<T>(
 				return { error: lastError };
 			}
 
-			const data = parseJsonPayload(responseText) as
-				| { data?: T }
+			const parsed = parseJsonPayload(responseText) as
+				| { data?: T; meta?: ApiResponseMeta }
 				| T
 				| null;
-			return { data: (data && typeof data === 'object' && 'data' in data ? data.data : data) as T };
+			
+			let data: T | undefined;
+			let meta: ApiResponseMeta | undefined;
+			
+			if (parsed && typeof parsed === 'object' && 'data' in parsed) {
+				data = (parsed as { data: T }).data;
+				meta = (parsed as { meta?: ApiResponseMeta }).meta;
+			} else {
+				data = parsed as T;
+			}
+			
+			return { data, meta };
 		} catch (error) {
 			clearTimeout(timeoutId);
 

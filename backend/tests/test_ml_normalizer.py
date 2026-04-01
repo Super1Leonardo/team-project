@@ -38,6 +38,28 @@ class _ClusterMatchStore(_DedupFreeStore):
         ]
 
 
+class _MentionMatchStore(_DedupFreeStore):
+    def __init__(self) -> None:
+        self.ensure_calls: list[tuple[int, int]] = []
+
+    def find_similar_mentions(
+        self,
+        project_id: int,
+        embedding: list[float],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 555,
+                "dedup_group_id": None,
+                "distance": 0.19,
+            }
+        ]
+
+    def ensure_dedup_group_for_mention(self, project_id: int, mention_id: int) -> int:
+        self.ensure_calls.append((project_id, mention_id))
+        return 888
+
+
 class MLResultNormalizerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.normalizer = MLResultNormalizer(_DedupFreeStore())
@@ -227,6 +249,65 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized[0]["dedup_group_id"], 77)
         self.assertFalse(normalized[0]["is_primary"])
 
+    def test_normalize_remote_results_uses_nested_cluster_embedding(self) -> None:
+        normalizer = MLResultNormalizer(
+            _ClusterMatchStore(),
+            cluster_threshold=0.22,
+        )
+        normalized = normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "sentiment": "positive",
+                    "sentiment_score": 0.8566,
+                    "confidence": {
+                        "positive": 0.8566,
+                        "neutral": 0.0997,
+                        "negative": 0.0436,
+                    },
+                    "cluster": {
+                        "cluster_id": "72458680-8854-4eae-b11d-9adfdfef2f04",
+                        "similarity": 0.6741781234741211,
+                        "is_new": True,
+                        "size": 1,
+                        "embedding": [0.01] * 384,
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["relevance_score"], 0.8566)
+        self.assertEqual(normalized[0]["dedup_group_id"], 77)
+        self.assertFalse(normalized[0]["is_primary"])
+        self.assertEqual(normalized[0]["embedding"], [0.01] * 384)
+
+    def test_normalize_remote_results_creates_group_from_similar_primary_mention(self) -> None:
+        store = _MentionMatchStore()
+        normalizer = MLResultNormalizer(
+            store,
+            cluster_threshold=0.22,
+        )
+
+        normalized = normalizer.normalize_remote_results(
+            queue_items=self.queue_items[:1],
+            remote_results=[
+                {
+                    "company": "Brand Radar",
+                    "is_relevant": True,
+                    "relevance_score": 0.9,
+                    "sentiment": "neutral",
+                    "sentiment_score": 0.1,
+                    "embedding": [0.01] * 384,
+                }
+            ],
+        )
+
+        self.assertEqual(normalized[0]["dedup_group_id"], 888)
+        self.assertFalse(normalized[0]["is_primary"])
+        self.assertEqual(store.ensure_calls, [(100, 555)])
+
     def test_normalize_remote_results_requires_ml_confidence_for_ml_items(self) -> None:
         with self.assertRaisesRegex(
             ExternalMLResponseError,
@@ -252,6 +333,62 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual([item["raw_post_id"] for item in ml_items], [1, 4])
         self.assertEqual([item["raw_post_id"] for item in skipped_items], [2, 3])
 
+    def test_split_queue_items_for_ml_matches_keywords_in_title_and_text(self) -> None:
+        now = datetime.now(UTC)
+        queue_item = {
+            "raw_post_id": 10,
+            "source_id": 10,
+            "project_id": 100,
+            "source_type": "rss",
+            "company": "Brand Radar",
+            "external_id": "post-10",
+            "url": "https://example.com/10",
+            "title": "Brand outage bulletin",
+            "text": "General company update",
+            "author": "Eve",
+            "published_at": now,
+            "collected_at": now,
+            "raw_meta": {},
+            "keywords": ["brand"],
+            "exclude_keywords": [],
+            "risk_words": ["outage"],
+        }
+
+        ml_items, skipped_items = self.normalizer.split_queue_items_for_ml([queue_item])
+
+        self.assertEqual([item["raw_post_id"] for item in ml_items], [10])
+        self.assertEqual(skipped_items, [])
+
+    def test_normalize_remote_results_uses_title_for_keyword_and_risk_matching(self) -> None:
+        now = datetime.now(UTC)
+        queue_item = {
+            "raw_post_id": 10,
+            "source_id": 10,
+            "project_id": 100,
+            "source_type": "rss",
+            "company": "Brand Radar",
+            "external_id": "post-10",
+            "url": "https://example.com/10",
+            "title": "Brand outage bulletin",
+            "text": "General company update",
+            "author": "Eve",
+            "published_at": now,
+            "collected_at": now,
+            "raw_meta": {},
+            "keywords": ["brand"],
+            "exclude_keywords": [],
+            "risk_words": ["outage"],
+        }
+
+        normalized = self.normalizer.normalize_remote_results(
+            queue_items=[queue_item],
+            remote_results=[self._remote_result()],
+        )
+
+        self.assertEqual(normalized[0]["relevance_label"], "relevant")
+        self.assertEqual(normalized[0]["relevance_score"], 0.91)
+        self.assertTrue(normalized[0]["has_risk_words"])
+
     def test_build_local_irrelevant_rows_marks_filtered_items_without_ml(self) -> None:
         rows = self.normalizer.build_local_irrelevant_rows(self.queue_items[1:3])
 
@@ -261,6 +398,25 @@ class MLResultNormalizerTests(unittest.TestCase):
         self.assertEqual([row["sentiment_label"] for row in rows], ["neutral", "neutral"])
         self.assertEqual([row["has_risk_words"] for row in rows], [True, False])
         self.assertEqual([row["embedding"] for row in rows], [None, None])
+
+    def test_keyword_matching_uses_word_boundaries_instead_of_substrings(self) -> None:
+        self.assertTrue(self.normalizer._contains_any("Brand outage update", ["brand"]))
+        self.assertFalse(self.normalizer._contains_any("Rebranding update", ["brand"]))
+        self.assertFalse(self.normalizer._contains_any("Superoutage alert", ["outage"]))
+
+    def test_keyword_matching_supports_phrases_with_flexible_whitespace(self) -> None:
+        self.assertTrue(
+            self.normalizer._contains_any(
+                "Brand   Radar\nmajor outage",
+                ["brand radar"],
+            )
+        )
+        self.assertTrue(
+            self.normalizer._contains_any(
+                "Brand-Radar major outage",
+                ["brand-radar"],
+            )
+        )
 
     @staticmethod
     def _remote_result() -> dict[str, Any]:

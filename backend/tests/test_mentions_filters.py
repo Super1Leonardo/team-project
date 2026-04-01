@@ -31,6 +31,7 @@ def _build_mention() -> dict:
         "has_risk_words": True,
         "dedup_group_id": None,
         "is_primary": True,
+        "resolved": False,
         "processed_at": now,
     }
 
@@ -40,6 +41,8 @@ class FakeBrandRadarService:
         self.mention_calls: list[dict] = []
         self.cluster_calls: list[dict] = []
         self.default_feed_calls: list[dict] = []
+        self.default_cluster_calls: list[dict] = []
+        self.resolved_calls: list[dict] = []
 
     async def list_mentions(
         self,
@@ -50,9 +53,11 @@ class FakeBrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        dedup_group_id: int | None = None,
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict:
         self.mention_calls.append(
             {
@@ -62,9 +67,11 @@ class FakeBrandRadarService:
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
                 "sentiment_label": sentiment_label,
+                "dedup_group_id": dedup_group_id,
                 "primary_only": primary_only,
                 "relevant_only": relevant_only,
                 "include_total": include_total,
+                "risk_words_only": risk_words_only,
             }
         )
         return {"items": [_build_mention()], "total": 1}
@@ -80,6 +87,7 @@ class FakeBrandRadarService:
         primary_only: bool = True,
         relevant_only: bool = True,
         include_total: bool = False,
+        risk_words_only: bool = False,
     ) -> dict:
         self.default_feed_calls.append(
             {
@@ -91,6 +99,7 @@ class FakeBrandRadarService:
                 "primary_only": primary_only,
                 "relevant_only": relevant_only,
                 "include_total": include_total,
+                "risk_words_only": risk_words_only,
             }
         )
         return {"items": [_build_mention()], "total": None}
@@ -104,6 +113,7 @@ class FakeBrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict:
         self.cluster_calls.append(
             {
@@ -113,6 +123,7 @@ class FakeBrandRadarService:
                 "confidence_threshold": confidence_threshold,
                 "published_after": published_after,
                 "sentiment_label": sentiment_label,
+                "risk_words_only": risk_words_only,
             }
         )
         mention = _build_mention()
@@ -130,6 +141,62 @@ class FakeBrandRadarService:
             ],
             "total": 1,
         }
+
+    async def list_default_clusters(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+        risk_words_only: bool = False,
+    ) -> dict:
+        self.default_cluster_calls.append(
+            {
+                "page": page,
+                "page_size": page_size,
+                "confidence_threshold": confidence_threshold,
+                "published_after": published_after,
+                "sentiment_label": sentiment_label,
+                "risk_words_only": risk_words_only,
+            }
+        )
+        mention = _build_mention()
+        return {
+            "items": [
+                {
+                    "cluster_id": 8,
+                    "dedup_group_id": 8,
+                    "mentions_count": 4,
+                    "first_seen_at": mention["published_at"],
+                    "last_seen_at": mention["published_at"],
+                    "representative_mention_id": mention["id"],
+                    **mention,
+                }
+            ],
+            "total": 1,
+        }
+
+    async def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict:
+        self.resolved_calls.append(
+            {
+                "project_id": project_id,
+                "mention_id": mention_id,
+                "resolved": resolved,
+            }
+        )
+        mention = _build_mention()
+        mention["id"] = mention_id
+        mention["project_id"] = project_id
+        mention["resolved"] = resolved
+        return mention
 
 
 def _build_client(service: FakeBrandRadarService) -> TestClient:
@@ -165,9 +232,11 @@ def test_mentions_route_applies_confidence_period_and_pagination() -> None:
     assert call["page_size"] == 20
     assert call["confidence_threshold"] == 0.7
     assert call["sentiment_label"] == "negative"
+    assert call["dedup_group_id"] is None
     assert call["primary_only"] is False
     assert call["relevant_only"] is False
     assert call["include_total"] is True
+    assert call["risk_words_only"] is False
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
@@ -193,9 +262,33 @@ def test_mentions_route_accepts_limit_as_page_size_alias() -> None:
     assert call["confidence_threshold"] is None
     assert call["published_after"] is None
     assert call["sentiment_label"] is None
+    assert call["dedup_group_id"] is None
     assert call["primary_only"] is False
     assert call["relevant_only"] is False
     assert call["include_total"] is True
+    assert call["risk_words_only"] is False
+
+
+def test_mentions_route_passes_dedup_group_filter() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.get(
+        "/api/projects/1/mentions",
+        params={
+            "dedup_group_id": 77,
+            "primary_only": "false",
+            "include_total": "false",
+        },
+    )
+
+    assert response.status_code == 200
+
+    call = service.mention_calls[-1]
+    assert call["dedup_group_id"] == 77
+    assert call["primary_only"] is False
+    assert call["include_total"] is False
+    assert call["risk_words_only"] is False
 
 
 def test_mentions_route_passes_fast_path_flags() -> None:
@@ -220,6 +313,7 @@ def test_mentions_route_passes_fast_path_flags() -> None:
     assert call["primary_only"] is True
     assert call["relevant_only"] is True
     assert call["include_total"] is False
+    assert call["risk_words_only"] is False
 
 
 def test_feed_route_uses_default_fast_flags() -> None:
@@ -247,6 +341,39 @@ def test_feed_route_uses_default_fast_flags() -> None:
     assert call["primary_only"] is True
     assert call["relevant_only"] is True
     assert call["include_total"] is False
+    assert call["risk_words_only"] is False
+
+
+def test_feed_clusters_route_uses_default_cluster_feed() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.get(
+        "/api/feed/clusters",
+        params={
+            "limit": 25,
+            "confidence": "0.7",
+            "period": "7d",
+            "sentiment": "negative",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"] == {"total": 1, "page": 1, "page_size": 25}
+    assert payload["data"][0]["cluster_id"] == 8
+    assert payload["data"][0]["mentions_count"] == 4
+
+    call = service.default_cluster_calls[-1]
+    assert call["page"] == 1
+    assert call["page_size"] == 25
+    assert call["confidence_threshold"] == 0.7
+    assert call["sentiment_label"] == "negative"
+    assert call["risk_words_only"] is False
+
+    expected_lower_bound = datetime.now(UTC) - timedelta(days=7, seconds=5)
+    expected_upper_bound = datetime.now(UTC) - timedelta(days=7) + timedelta(seconds=5)
+    assert expected_lower_bound <= call["published_after"] <= expected_upper_bound
 
 
 def test_clusters_route_applies_filters_and_limit_alias() -> None:
@@ -276,7 +403,32 @@ def test_clusters_route_applies_filters_and_limit_alias() -> None:
     assert call["page_size"] == 25
     assert call["confidence_threshold"] == 0.5
     assert call["sentiment_label"] == "negative"
+    assert call["risk_words_only"] is False
 
     expected_lower_bound = datetime.now(UTC) - timedelta(days=30, seconds=5)
     expected_upper_bound = datetime.now(UTC) - timedelta(days=30) + timedelta(seconds=5)
     assert expected_lower_bound <= call["published_after"] <= expected_upper_bound
+
+
+def test_update_mention_resolved_route_updates_single_mention() -> None:
+    service = FakeBrandRadarService()
+    client = _build_client(service)
+
+    response = client.post(
+        "/api/projects/3/mentions/77/resolved",
+        json={"resolved": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["id"] == 77
+    assert payload["data"]["project_id"] == 3
+    assert payload["data"]["resolved"] is True
+
+    assert service.resolved_calls == [
+        {
+            "project_id": 3,
+            "mention_id": 77,
+            "resolved": True,
+        }
+    ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,12 +15,19 @@ logger = logging.getLogger(__name__)
 class BrandRadarService:
     def __init__(self, runtime: ArchitectureRuntime):
         self.runtime = runtime
+        self._project_reprocessing_tasks: dict[int, asyncio.Task[None]] = {}
+        self._pending_project_reprocessing: dict[int, bool] = {}
+        self._health_cache: dict[str, Any] | None = None
+        self._health_cache_expires_at = 0.0
+        self._health_cache_lock: asyncio.Lock | None = None
 
     async def list_projects(self) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self.runtime.postgres_store.list_projects)
 
     async def get_project(self, project_id: int) -> dict[str, Any]:
-        return await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.get_project, project_id
+        )
 
     async def create_project(self, payload) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -55,42 +63,11 @@ class BrandRadarService:
             if processing_stats["failed"] <= 0:
                 return updated_project
 
-            requeued_failed_posts = await asyncio.to_thread(
-                self.runtime.postgres_store.requeue_failed_raw_posts_for_reprocessing,
-                project_id,
-            )
-            if requeued_failed_posts <= 0:
-                return updated_project
+            self._schedule_project_reprocessing(project_id, reset_mentions=False)
+            return updated_project
 
-            try:
-                await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
-            except Exception:
-                logger.exception(
-                    "Project %s was updated, failed raw posts were requeued, but immediate reprocessing failed.",
-                    project_id,
-                )
-
-            return await asyncio.to_thread(
-                self.runtime.postgres_store.get_project,
-                project_id,
-            )
-
-        await asyncio.to_thread(
-            self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
-            project_id,
-        )
-        try:
-            await self.runtime.ml_worker.run_until_project_queue_drained(project_id)
-        except Exception:
-            logger.exception(
-                "Project %s was updated, mentions were requeued, but immediate reprocessing failed.",
-                project_id,
-            )
-
-        return await asyncio.to_thread(
-            self.runtime.postgres_store.get_project,
-            project_id,
-        )
+        self._schedule_project_reprocessing(project_id, reset_mentions=True)
+        return updated_project
 
     async def delete_project(self, project_id: int) -> None:
         await asyncio.to_thread(self.runtime.postgres_store.delete_project, project_id)
@@ -119,7 +96,9 @@ class BrandRadarService:
             poll_interval_s=payload.poll_interval_s,
         )
 
-    async def update_source(self, project_id: int, source_id: int, payload) -> dict[str, Any]:
+    async def update_source(
+        self, project_id: int, source_id: int, payload
+    ) -> dict[str, Any]:
         return await asyncio.to_thread(
             self.runtime.postgres_store.update_source,
             project_id,
@@ -153,7 +132,9 @@ class BrandRadarService:
 
         source_id_set = set(source_ids or [])
         if source_id_set:
-            sources = [source for source in sources if int(source["id"]) in source_id_set]
+            sources = [
+                source for source in sources if int(source["id"]) in source_id_set
+            ]
 
         if not sources:
             raise ResourceNotFoundError("No matching active sources were found.")
@@ -171,7 +152,9 @@ class BrandRadarService:
             "sources_triggered": len(sources),
         }
 
-    async def get_collector_status(self, project_id: int | None = None) -> dict[str, Any]:
+    async def get_collector_status(
+        self, project_id: int | None = None
+    ) -> dict[str, Any]:
         if project_id is not None:
             await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
 
@@ -262,7 +245,9 @@ class BrandRadarService:
         remote_results: list[dict[str, Any]] = []
         if ml_items:
             remote_response = await self.runtime.external_ml_gateway.predict(ml_items)
-            remote_results = self.runtime.ml_normalizer.extract_remote_results(remote_response)
+            remote_results = self.runtime.ml_normalizer.extract_remote_results(
+                remote_response
+            )
 
         response_payload = {
             "queued_count": len(items),
@@ -319,7 +304,10 @@ class BrandRadarService:
             mention_rows,
         )
         message = "ML results stored and synced to ClickHouse."
-        if result["stored_count"] > 0 and result["synced_count"] < result["stored_count"]:
+        if (
+            result["stored_count"] > 0
+            and result["synced_count"] < result["stored_count"]
+        ):
             message = "ML results stored; ClickHouse sync is pending for some rows."
         return {
             "stored_count": result["stored_count"],
@@ -335,7 +323,9 @@ class BrandRadarService:
             "projects": {str(key): value for key, value in result["projects"].items()},
         }
 
-    async def list_raw_posts(self, project_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_raw_posts(
+        self, project_id: int, limit: int = 100
+    ) -> list[dict[str, Any]]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
             self.runtime.postgres_store.list_raw_posts,
@@ -352,9 +342,11 @@ class BrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        dedup_group_id: int | None = None,
         primary_only: bool = False,
         relevant_only: bool = False,
         include_total: bool = True,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
@@ -365,9 +357,26 @@ class BrandRadarService:
             confidence_threshold=confidence_threshold,
             published_after=published_after,
             sentiment_label=sentiment_label,
+            dedup_group_id=dedup_group_id,
             primary_only=primary_only,
             relevant_only=relevant_only,
             include_total=include_total,
+            risk_words_only=risk_words_only,
+        )
+
+    async def update_mention_resolved(
+        self,
+        project_id: int,
+        mention_id: int,
+        *,
+        resolved: bool,
+    ) -> dict[str, Any]:
+        await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
+        return await asyncio.to_thread(
+            self.runtime.postgres_store.update_mention_resolved,
+            project_id,
+            mention_id,
+            resolved=resolved,
         )
 
     async def list_default_mentions(
@@ -381,8 +390,11 @@ class BrandRadarService:
         primary_only: bool = True,
         relevant_only: bool = True,
         include_total: bool = False,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
-        project = await asyncio.to_thread(self.runtime.postgres_store.get_preferred_project)
+        project = await asyncio.to_thread(
+            self.runtime.postgres_store.get_preferred_project
+        )
         mentions_page = await asyncio.to_thread(
             self.runtime.postgres_store.list_mentions,
             int(project["id"]),
@@ -394,9 +406,38 @@ class BrandRadarService:
             primary_only=primary_only,
             relevant_only=relevant_only,
             include_total=include_total,
+            risk_words_only=risk_words_only,
         )
         return {
             **mentions_page,
+            "project": project,
+        }
+
+    async def list_default_clusters(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        confidence_threshold: float | None = None,
+        published_after: datetime | None = None,
+        sentiment_label: str | None = None,
+        risk_words_only: bool = False,
+    ) -> dict[str, Any]:
+        project = await asyncio.to_thread(
+            self.runtime.postgres_store.get_preferred_project
+        )
+        clusters_page = await asyncio.to_thread(
+            self.runtime.postgres_store.list_clusters,
+            int(project["id"]),
+            page=page,
+            page_size=page_size,
+            confidence_threshold=confidence_threshold,
+            published_after=published_after,
+            sentiment_label=sentiment_label,
+            risk_words_only=risk_words_only,
+        )
+        return {
+            **clusters_page,
             "project": project,
         }
 
@@ -409,6 +450,7 @@ class BrandRadarService:
         confidence_threshold: float | None = None,
         published_after: datetime | None = None,
         sentiment_label: str | None = None,
+        risk_words_only: bool = False,
     ) -> dict[str, Any]:
         await asyncio.to_thread(self.runtime.postgres_store.get_project, project_id)
         return await asyncio.to_thread(
@@ -419,63 +461,90 @@ class BrandRadarService:
             confidence_threshold=confidence_threshold,
             published_after=published_after,
             sentiment_label=sentiment_label,
+            risk_words_only=risk_words_only,
         )
 
     async def get_health(self) -> dict[str, Any]:
-        postgres_status = "healthy"
-        clickhouse_status = "healthy"
-        ml_status = "healthy"
-        ml_error: str | None = None
-        ml_url = self.runtime.external_ml_gateway.predict_url
-        queue_size = 0
+        now = time.monotonic()
+        if self._health_cache is not None and now < self._health_cache_expires_at:
+            return dict(self._health_cache)
 
-        try:
-            await asyncio.to_thread(self.runtime.postgres_store.ping)
-        except Exception:
-            postgres_status = "unhealthy"
+        if self._health_cache_lock is None:
+            self._health_cache_lock = asyncio.Lock()
 
-        try:
-            await asyncio.to_thread(self.runtime.clickhouse_store.ping)
-        except Exception:
-            clickhouse_status = "unhealthy"
+        async with self._health_cache_lock:
+            now = time.monotonic()
+            if self._health_cache is not None and now < self._health_cache_expires_at:
+                return dict(self._health_cache)
 
-        if postgres_status == "healthy":
-            try:
-                queue_size = await asyncio.to_thread(
-                    self.runtime.postgres_store.count_unprocessed_raw_posts
-                )
-            except Exception:
+            postgres_task = asyncio.to_thread(
+                self.runtime.postgres_store.count_unprocessed_raw_posts
+            )
+            clickhouse_task = asyncio.to_thread(self.runtime.clickhouse_store.ping)
+            ml_task = self.runtime.external_ml_gateway.get_health_status()
+
+            postgres_result, clickhouse_result, ml_result = await asyncio.gather(
+                postgres_task,
+                clickhouse_task,
+                ml_task,
+                return_exceptions=True,
+            )
+
+            postgres_status = "healthy"
+            clickhouse_status = "healthy"
+            ml_status = "healthy"
+            ml_error: str | None = None
+            ml_url = self.runtime.external_ml_gateway.predict_url
+            queue_size = 0
+
+            if isinstance(postgres_result, Exception):
                 postgres_status = "unhealthy"
+            else:
+                queue_size = int(postgres_result)
 
-        try:
-            ml_health = await self.runtime.external_ml_gateway.get_health_status()
-            ml_status = ml_health["status"]
-            ml_error = ml_health.get("error")
-            ml_url = ml_health.get("url", ml_url)
-        except Exception as exc:
-            ml_status = "unhealthy"
-            ml_error = str(exc)
+            if isinstance(clickhouse_result, Exception):
+                clickhouse_status = "unhealthy"
 
-        if (
-            postgres_status == "healthy"
-            and clickhouse_status == "healthy"
-            and ml_status == "healthy"
-        ):
-            overall = "healthy"
-        elif postgres_status == "unhealthy" and clickhouse_status == "unhealthy":
-            overall = "unhealthy"
-        else:
-            overall = "degraded"
+            if isinstance(ml_result, Exception):
+                ml_status = "unhealthy"
+                ml_error = str(ml_result)
+            else:
+                ml_status = ml_result["status"]
+                ml_error = ml_result.get("error")
+                ml_url = ml_result.get("url", ml_url)
 
-        return {
-            "status": overall,
-            "postgres": postgres_status,
-            "clickhouse": clickhouse_status,
-            "ml": ml_status,
-            "ml_url": ml_url,
-            "ml_error": ml_error,
-            "ml_queue_size": queue_size,
-        }
+            if (
+                postgres_status == "healthy"
+                and clickhouse_status == "healthy"
+                and ml_status == "healthy"
+            ):
+                overall = "healthy"
+            elif postgres_status == "unhealthy" and clickhouse_status == "unhealthy":
+                overall = "unhealthy"
+            else:
+                overall = "degraded"
+
+            result = {
+                "status": overall,
+                "postgres": postgres_status,
+                "clickhouse": clickhouse_status,
+                "ml": ml_status,
+                "ml_url": ml_url,
+                "ml_error": ml_error,
+                "ml_queue_size": queue_size,
+            }
+            gateway_settings = getattr(
+                self.runtime.external_ml_gateway, "settings", None
+            )
+            ttl_seconds = max(
+                0.0,
+                float(
+                    getattr(gateway_settings, "backend_health_cache_ttl_seconds", 2.0)
+                ),
+            )
+            self._health_cache = dict(result)
+            self._health_cache_expires_at = time.monotonic() + ttl_seconds
+            return result
 
     @staticmethod
     def _log_background_task_result(task: asyncio.Task) -> None:
@@ -483,3 +552,88 @@ class BrandRadarService:
             task.result()
         except Exception:
             logger.exception("Background collector task failed.")
+
+    def _schedule_project_reprocessing(
+        self, project_id: int, *, reset_mentions: bool
+    ) -> None:
+        existing_task = self._project_reprocessing_tasks.get(project_id)
+        if existing_task is not None and not existing_task.done():
+            self._pending_project_reprocessing[project_id] = (
+                self._pending_project_reprocessing.get(project_id, False)
+                or reset_mentions
+            )
+            logger.info(
+                "Project %s reprocessing is already running; queued a follow-up run.",
+                project_id,
+            )
+            return
+
+        task = asyncio.create_task(
+            self._run_project_reprocessing(project_id, reset_mentions=reset_mentions),
+            name=f"project-reprocessing-{project_id}",
+        )
+        self._project_reprocessing_tasks[project_id] = task
+        task.add_done_callback(
+            lambda done_task, project_id=project_id: self._on_project_reprocessing_done(
+                project_id,
+                done_task,
+            )
+        )
+
+    async def _run_project_reprocessing(
+        self,
+        project_id: int,
+        *,
+        reset_mentions: bool,
+    ) -> None:
+        should_reset_mentions = reset_mentions
+
+        while True:
+            should_drain_queue = False
+            if should_reset_mentions:
+                await asyncio.to_thread(
+                    self.runtime.postgres_store.reset_project_mentions_for_reprocessing,
+                    project_id,
+                )
+                should_drain_queue = True
+            else:
+                processing_stats = await asyncio.to_thread(
+                    self.runtime.postgres_store.get_raw_post_processing_stats,
+                    project_id,
+                )
+                if processing_stats["failed"] > 0:
+                    requeued_failed_posts = await asyncio.to_thread(
+                        self.runtime.postgres_store.requeue_failed_raw_posts_for_reprocessing,
+                        project_id,
+                    )
+                    should_drain_queue = requeued_failed_posts > 0
+
+            if should_drain_queue:
+                try:
+                    await self.runtime.ml_worker.run_until_project_queue_drained(
+                        project_id
+                    )
+                except Exception:
+                    logger.exception(
+                        "Project %s was updated and requeued, but background reprocessing failed.",
+                        project_id,
+                    )
+
+            pending_reset = self._pending_project_reprocessing.pop(project_id, None)
+            if pending_reset is None:
+                break
+            should_reset_mentions = pending_reset
+
+    def _on_project_reprocessing_done(
+        self,
+        project_id: int,
+        task: asyncio.Task[None],
+    ) -> None:
+        self._project_reprocessing_tasks.pop(project_id, None)
+        try:
+            task.result()
+        except Exception:
+            logger.exception(
+                "Background project reprocessing task failed for project %s.",
+                project_id,
+            )

@@ -14,12 +14,18 @@ from backend.app.api.dependencies import (
 )
 from backend.app.api.router import api_router
 from backend.app.core.exception_handlers import register_exception_handlers
+from backend.app.core.observability import (
+    RequestMetricsTracker,
+    install_request_metrics_middleware,
+    log_request_metrics_forever,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_app_settings()
     get_brandradar_postgres_store().init_db()
     try:
         get_brandradar_clickhouse_store().init_db()
@@ -27,6 +33,7 @@ async def lifespan(app: FastAPI):
         logger.exception("Mention events ClickHouse init failed; continuing in degraded mode.")
     runtime = get_brandradar_runtime()
     stop_event = asyncio.Event()
+    tracker = app.state.request_metrics_tracker
     worker_tasks = [
         asyncio.create_task(
             runtime.collector_worker.run_forever(stop_event),
@@ -35,6 +42,14 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(
             runtime.ml_worker.run_forever(stop_event),
             name="brandradar-ml-worker",
+        ),
+        asyncio.create_task(
+            log_request_metrics_forever(
+                stop_event=stop_event,
+                tracker=tracker,
+                interval_seconds=settings.backend_metrics_log_interval_seconds,
+            ),
+            name="brandradar-http-metrics",
         ),
     ]
     app.state.brandradar_runtime = runtime
@@ -65,6 +80,13 @@ def create_app() -> FastAPI:
     app.add_middleware(
         GZipMiddleware,
         minimum_size=1_000,
+    )
+    install_request_metrics_middleware(
+        app,
+        tracker=RequestMetricsTracker(
+            window_seconds=settings.backend_metrics_window_seconds,
+        ),
+        slow_request_threshold_ms=settings.backend_slow_request_threshold_ms,
     )
     register_exception_handlers(app)
     app.include_router(api_router)
